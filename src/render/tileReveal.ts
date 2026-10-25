@@ -8,15 +8,26 @@ import { TILES_PER_SIDE, tileId, tileOf } from '../world/terrain';
 export type TileRenderLevel = 'plain' | 'district' | 'ground';
 
 const groundLoaded = new Set<string>();
+/** The reveal gate (Reveal.isShown in sim/reveal.ts): visited or scoped tiles. Until it is set every tile is plain. */
+let shown: (id: string) => boolean = () => false;
 
-/** Tell the renderer which tiles have their ground detail loaded; they render at 'ground' level, the rest at 'district'. */
+/** Tell the renderer which tiles show their damage at all: those the player has visited or revealed by scope. */
+export function setRevealGate(isShown: (id: string) => boolean): void {
+  shown = isShown;
+}
+
+/** Tell the renderer which tiles have their ground detail loaded; shown ones render at 'ground' level. */
 export function setGroundLoaded(ids: Iterable<string>): void {
   groundLoaded.clear();
   for (const id of ids) groundLoaded.add(id);
 }
 
-/** Render level of a tile by its id (tileId): 'ground' while its ground detail is loaded, else 'district'. */
+/**
+ * Render level of a tile by its id (tileId): 'plain' until it is visited or revealed (band colouring stays, but no
+ * craters, fire smoke, fallen bridges or debris), then 'ground' while its ground detail is loaded, else 'district'.
+ */
 export function tileRenderLevel(id: string): TileRenderLevel {
+  if (!shown(id)) return 'plain';
   return groundLoaded.has(id) ? 'ground' : 'district';
 }
 

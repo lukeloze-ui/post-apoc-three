@@ -231,10 +231,11 @@ export class TerrainChunks {
   /**
    * The ground changed inside this local-metre box (small craters appeared or went): rebuild the chunks it touches
    * that are at a level fine enough to show it (spacing 8 m or less). Coarser chunks pick it up if they get finer.
+   * With allLevels (a tile's render level changed, so its colours did too) every built chunk it touches is rebuilt.
    */
-  invalidate(b: Bounds): void {
+  invalidate(b: Bounds, allLevels = false): void {
     for (const c of this.chunks) {
-      if (c.level < 0 || c.level > FINE_LEVELS - 1) continue;
+      if (c.level < 0 || (!allLevels && c.level > FINE_LEVELS - 1)) continue;
       if (b.x1 < c.x0 || b.x0 > c.x0 + CHUNK_M || b.y1 < c.y0 || b.y0 > c.y0 + CHUNK_M) continue;
       c.dirty = true;
       this.force = true;

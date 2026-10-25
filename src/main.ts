@@ -8,7 +8,11 @@ import { createBandColorFn, createDamageColorFn } from './render/terrainColor';
 import { DistrictDamage } from './render/damage';
 import { BlockerDamage } from './render/blockers';
 import { GroundDetail } from './render/groundDetail';
-import { renderLevelAt, setGroundLoaded, showsDamage } from './render/tileReveal';
+import { renderLevelAt, setGroundLoaded, setRevealGate, showsDamage } from './render/tileReveal';
+import { DWELL_S, Reveal, type ScopeView } from './sim/reveal';
+import { activeSmoke } from './sim/visibility';
+import { weatherAt } from './sim/weather';
+import { registerRevealLayer } from './ui/debug/revealLayer';
 import { buildLakeWater } from './render/lakeWater';
 import { Linework } from './render/linework';
 import { WoodsAndBuildings } from './render/woodsAndBuildings';
@@ -28,12 +32,13 @@ import { registerRouteLayers } from './ui/debug/routeLayer';
 import { GroundCache, type GroundTile } from './world/ground';
 import { findTarget, perform, promptText, type Target } from './sim/groundInteract';
 import { GroundStreaming, tilesAround } from './world/groundStreaming';
-import { tileId, tileOf } from './world/terrain';
+import { tileBounds, tileId, tileOf } from './world/terrain';
+import { tileIndexOf } from './world/ground';
 import { fetchDistricts } from './world/districts';
 import { osgbToLocal } from './world/geo';
 import { createStatsReadout } from './ui/debug/stats';
 import { clockLabel, createHud, createInteractHud } from './ui/hud';
-import { NORMAL_FOV_DEG, RAISE_SEC, Scope, sensitivityScale } from './sim/scope';
+import { NORMAL_FOV_DEG, RAISE_SEC, SCOPE_FOV_DEG, Scope, sensitivityScale } from './sim/scope';
 import { createScopeOverlay } from './ui/scopeOverlay';
 import { createPlayerHud } from './ui/playerHud';
 import { createHazardHud } from './ui/hazardHud';
@@ -98,6 +103,24 @@ async function main(): Promise<void> {
       : saved
         ? { x: saved.x, y: saved.y }
         : { x: START.x, y: START.y };
+  // The reveal gate: a tile shows its damage once visited (within about 1 km) or seen through the scope.
+  const reveal = new Reveal();
+  setRevealGate((id) => reveal.isShown(id));
+  save.registerSection('reveal', () => reveal.serialize(), (d) => reveal.load(d));
+  reveal.visit(start.x, start.y);
+  const heightFn = (x: number, y: number): number => heightAt(terrain, x, y);
+  const revealWorld = () => ({ heightAt: heightFn, weather: weatherAt(clock.gameDays), smoke: activeSmoke(districts.tiles, clock.gameDays) });
+  if (params.scope) {
+    // ?scope=1 opens with the binoculars up; hold them on the start view for the dwell so the first frame shows it.
+    const view: ScopeView = {
+      eye: { x: start.x, y: start.y, z: heightFn(start.x, start.y) + EYE_HEIGHT_M },
+      yawDeg: params.yaw ?? saved?.yaw ?? START.yaw,
+      pitchDeg: params.pitch ?? 0,
+      vFovDeg: SCOPE_FOV_DEG.binoculars,
+      aspect: window.innerWidth / window.innerHeight,
+    };
+    for (let t = 0; t <= DWELL_S + 0.1; t += 0.05) reveal.update(0.05, view, revealWorld());
+  }
   const bandColorFn = createBandColorFn(terrain, flood);
   const colorFn = createDamageColorFn(bandColorFn, craters, strikeZones, districts.tiles.flatMap((t) => t.landslips), districts.tiles.flatMap((t) => t.siltFlats));
   const chunks = new TerrainChunks(surface, {
@@ -105,7 +128,7 @@ async function main(): Promise<void> {
     surfaceFor: (x0, y0) => (showsDamage(renderLevelAt(x0 + 1, y0 + 1)) ? surface : plainSurface),
   });
   chunks.buildAll(start.x, start.y);
-  const linework = new Linework(surface, features, flood, { districts, plainSurface });
+  let linework = new Linework(surface, features, flood, { districts, plainSurface });
   const damage = new DistrictDamage(surface, features, districts);
   const blockers = new BlockerDamage(surface, features, districts);
   const deadBirds = new DeadBirds(surface, districts);
@@ -183,6 +206,32 @@ async function main(): Promise<void> {
     }
   };
   await syncGround(start.x, start.y);
+  // A newly shown tile: recolour and recarve its chunks at every level; the fallen bridges are baked into the
+  // linework, so that is rebuilt (at most once a second, as reveals come in bursts).
+  let lineworkStale = false;
+  let lineworkBuiltAt = performance.now();
+  let groundWanted = false;
+  reveal.subscribe((ids) => {
+    for (const id of ids) {
+      const t = tileIndexOf(id);
+      if (t) chunks.invalidate(tileBounds(t.i, t.j), true);
+    }
+    lineworkStale = true;
+    if (!params.fly) save.markDirty();
+  });
+  const refreshLinework = (): void => {
+    if (!lineworkStale || performance.now() - lineworkBuiltAt < 1000) return;
+    lineworkStale = false;
+    lineworkBuiltAt = performance.now();
+    const next = new Linework(surface, features, flood, { districts, plainSurface });
+    linework.dispose();
+    gs.scene.add(next.group);
+    linework = next;
+  };
+  const requestDetail = (id: string): void => {
+    groundStreaming.requestTileDetail(id, performance.now());
+    if (!groundDetail.loaded.includes(id) && !groundFailed.has(id)) groundWanted = true;
+  };
   const look = new Look(gs.renderer.domElement, params.yaw ?? saved?.yaw ?? START.yaw, params.pitch ?? 0);
   const damageIndex = buildDamageIndex(districts, features.woods, terrain.meta.cellM);
   const walkWorld = createWalkWorld({
@@ -266,6 +315,7 @@ async function main(): Promise<void> {
   if (wantDebug) {
     registerDistrictLayers(districts, features);
     registerRouteLayers(districts, features);
+    registerRevealLayer(reveal);
   }
   const groundLayer = wantDebug ? registerGroundLayer(groundCache) : null;
   const debugView = wantDebug
@@ -350,7 +400,7 @@ async function main(): Promise<void> {
       }))
     : null;
 
-  window.__game = { params, clock, player, walkLog, terrain, surface, chunks, linework, woodsAndBuildings, damage, groundDetail, districts, look, scope, ...gs };
+  window.__game = { params, clock, player, walkLog, terrain, surface, chunks, linework, woodsAndBuildings, damage, groundDetail, districts, look, scope, reveal, ...gs };
 
   gs.run(
     (dt) => {
@@ -395,6 +445,22 @@ async function main(): Promise<void> {
       }
       scopeOverlay.update(scope.visibleKind, scope.raise);
       look.apply(gs.camera);
+      reveal.visit(gs.camera.position.x, -gs.camera.position.z);
+      reveal.update(
+        dt,
+        scope.scoped
+          ? {
+              eye: { x: gs.camera.position.x, y: -gs.camera.position.z, z: gs.camera.position.y },
+              yawDeg: look.yaw,
+              pitchDeg: look.pitch,
+              vFovDeg: scope.fov,
+              aspect: gs.camera.aspect,
+            }
+          : null,
+        revealWorld(),
+        requestDetail,
+      );
+      refreshLinework();
       chunks.update(gs.camera.position.x, -gs.camera.position.z);
       linework.update(gs.camera.position.x, -gs.camera.position.z);
       woodsAndBuildings.update(gs.camera.position.x, -gs.camera.position.z);
@@ -402,8 +468,9 @@ async function main(): Promise<void> {
       damage.update(gs.camera, clock.gameDays, sunAltitude, performance.now() / 1000);
       deadBirds.update(clock.gameDays);
       const hereKey = tileKey(gs.camera.position.x, -gs.camera.position.z);
-      if (!groundBusy && hereKey !== groundAt) {
+      if (!groundBusy && (hereKey !== groundAt || groundWanted)) {
         groundAt = hereKey;
+        groundWanted = false;
         void syncGround(gs.camera.position.x, -gs.camera.position.z);
       }
       groundDetail.update(gs.camera);
