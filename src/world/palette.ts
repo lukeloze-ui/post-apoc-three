@@ -33,3 +33,22 @@ export const BEDROCK = 0x4c4b4a;
 /** Lake surfaces: fresh is clear blue-green, salt is a murkier grey-green. */
 export const WATER_FRESH = 0x2c4c5c;
 export const WATER_SALT = 0x3d5a58;
+
+/** Road surfaces by class, before mud. */
+export const ROAD_COLORS = {
+  A: 0x3b3b3d,
+  B: 0x424244,
+  minor: 0x4d4c49,
+  track: 0x6e6048,
+  path: 0x7d6f56,
+} as const;
+
+/** Railway: grey ballast with a darker bed down the middle. */
+export const RAIL_BALLAST = 0x77736d;
+export const RAIL_CENTRE = 0x3a3733;
+
+/** Bridge parapets, walls, piers and kerbs. */
+export const BRIDGE_STONE = 0x7d7a73;
+
+/** Streams are a little browner than rivers (rivers use WATER_FRESH). */
+export const WATER_STREAM = 0x3a5a60;
