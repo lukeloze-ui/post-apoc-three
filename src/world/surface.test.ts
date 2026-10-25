@@ -9,6 +9,7 @@ import {
   craterOffset,
   createCraterModifier,
   createSurface,
+  createTileCraters,
   roughnessAt,
   smoothSurfaceHeight,
   surfaceHeight,
@@ -139,5 +140,18 @@ describe('craters', () => {
       expect(surfaceHeight(carved, x, y)).toBeCloseTo(want, 9);
     }
     expect(createCraterModifier([])).toBeNull();
+  });
+
+  it('carve small craters from loaded tiles, only on the detailed surface, and restore them on unload', () => {
+    const tc = createTileCraters();
+    const sc = createSurface(t, [tc]);
+    const c = { x: 3000, y: 4000, r: 5 };
+    const box = tc.setTile('3,4', [c]);
+    expect(box).not.toBeNull();
+    expect(surfaceHeight(sc, c.x, c.y) - surfaceHeight(s, c.x, c.y)).toBeCloseTo(-2, 6);
+    expect(surfaceHeight(sc, c.x + 1.1 * c.r, c.y) - surfaceHeight(s, c.x + 1.1 * c.r, c.y)).toBeGreaterThan(0);
+    expect(smoothSurfaceHeight(sc, c.x, c.y)).toBe(smoothSurfaceHeight(s, c.x, c.y));
+    expect(tc.removeTile('3,4')).toEqual(box);
+    expect(surfaceHeight(sc, c.x, c.y)).toBe(surfaceHeight(s, c.x, c.y));
   });
 });

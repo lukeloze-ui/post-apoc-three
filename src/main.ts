@@ -17,7 +17,7 @@ import { sunPosition } from './sim/sun';
 import { formatHours, legLabel } from './sim/naismith';
 import { LegTracker } from './sim/legTracker';
 import { fetchTerrain, heightAt, START } from './world/terrain';
-import { createCraterModifier, createSurface } from './world/surface';
+import { createCraterModifier, createSurface, createTileCraters } from './world/surface';
 import { fetchFlood } from './world/flood';
 import { fetchLakes } from './world/lakes';
 import { createOverheadView } from './ui/debug/overheadView';
@@ -78,7 +78,8 @@ async function main(): Promise<void> {
   };
   updateSky();
   const craterMod = createCraterModifier(craters);
-  const surface = createSurface(terrain, craterMod ? [craterMod] : []);
+  const tileCraters = createTileCraters();
+  const surface = createSurface(terrain, craterMod ? [craterMod, tileCraters] : [tileCraters]);
   const plainSurface = createSurface(terrain);
 
   const start =
@@ -139,9 +140,22 @@ async function main(): Promise<void> {
             }
           }),
       );
-      for (const tile of fetched) if (tile) groundDetail.setTile(applyDeltas(tile, groundDeltas));
+      // The small craters go in first, so the debris sits on the carved ground; then the near chunks rebuild.
+      for (const tile of fetched) {
+        if (!tile) continue;
+        const loaded = applyDeltas(tile, groundDeltas);
+        const spots = loaded.objects.filter((o) => o.kind === 'crater').map((o) => ({ x: o.x, y: o.y, r: o.size / 2 }));
+        const changed = tileCraters.setTile(loaded.tile, spots);
+        groundDetail.setTile(loaded);
+        if (changed) chunks.invalidate(changed);
+      }
       const keep = new Set(want);
-      for (const id of groundDetail.loaded) if (!keep.has(id)) groundDetail.unloadTile(id);
+      for (const id of groundDetail.loaded) {
+        if (keep.has(id)) continue;
+        groundDetail.unloadTile(id);
+        const changed = tileCraters.removeTile(id);
+        if (changed) chunks.invalidate(changed);
+      }
       setGroundLoaded(groundDetail.loaded);
     } finally {
       groundBusy = false;

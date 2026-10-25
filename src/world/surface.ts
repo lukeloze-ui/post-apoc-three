@@ -9,6 +9,8 @@ export interface HeightModifier {
   bounds?: Bounds;
   /** Returns the new height at (x, y) given the height so far. Must be a pure function of its inputs. */
   apply(x: number, y: number, h: number): number;
+  /** Too small to show on the coarse meshes: smoothSurfaceHeight (the 25 m and 50 m levels) leaves it out. */
+  fine?: boolean;
 }
 
 export interface Surface {
@@ -161,8 +163,9 @@ export function roughnessAt(s: Surface, x: number, y: number): number {
   return ((GAIN * n) / (1 + (GAIN - 1) * Math.abs(n))) * roughnessAmplitude(s, x, y);
 }
 
-function applyModifiers(s: Surface, x: number, y: number, h: number): number {
+function applyModifiers(s: Surface, x: number, y: number, h: number, smooth = false): number {
   for (const m of s.modifiers) {
+    if (smooth && m.fine) continue;
     const b = m.bounds;
     if (b && (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1)) continue;
     h = m.apply(x, y, h);
@@ -175,9 +178,9 @@ export function surfaceHeight(s: Surface, x: number, y: number): number {
   return applyModifiers(s, x, y, baseHeight(s.terrain, x, y) + roughnessAt(s, x, y));
 }
 
-/** Ground height without the roughness, for distant meshes too coarse to show it. Modifiers still apply. */
+/** Ground height without the roughness, for distant meshes too coarse to show it. Modifiers still apply, except fine ones. */
 export function smoothSurfaceHeight(s: Surface, x: number, y: number): number {
-  return applyModifiers(s, x, y, baseHeight(s.terrain, x, y));
+  return applyModifiers(s, x, y, baseHeight(s.terrain, x, y), true);
 }
 
 // ---- Craters ----
@@ -242,6 +245,47 @@ export function spotGrid<T extends RoundSpot>(spots: readonly T[], reach: number
   return {
     near: (x, y) => cells.get(key(Math.floor(x / cellM), Math.floor(y / cellM))) ?? NO_SPOTS,
     bounds,
+  };
+}
+
+/**
+ * The small craters of the loaded ground tiles as one modifier. Each tile keeps its own spatial index, so a point
+ * only searches the tiles whose craters can reach it. Add it to a surface's modifiers once; tiles come and go.
+ */
+export interface TileCraters extends HeightModifier {
+  /** Register (or replace) a tile's craters; r is the radius, local metres. Returns the box they change. */
+  setTile(id: string, craters: readonly RoundSpot[]): Bounds | null;
+  /** Forget a tile's craters. Returns the box they changed, or null if it had none. */
+  removeTile(id: string): Bounds | null;
+}
+
+export function createTileCraters(): TileCraters {
+  const tiles = new Map<string, SpotGrid<RoundSpot> & { bounds: Bounds }>();
+  return {
+    fine: true,
+    setTile(id, craters) {
+      const old = tiles.get(id)?.bounds ?? null;
+      const grid = spotGrid(craters, CRATER_RIM_REACH, 16);
+      if (grid.bounds) tiles.set(id, grid as SpotGrid<RoundSpot> & { bounds: Bounds });
+      else tiles.delete(id);
+      const nb = grid.bounds;
+      if (!old) return nb;
+      if (!nb) return old;
+      return { x0: Math.min(old.x0, nb.x0), y0: Math.min(old.y0, nb.y0), x1: Math.max(old.x1, nb.x1), y1: Math.max(old.y1, nb.y1) };
+    },
+    removeTile(id) {
+      const old = tiles.get(id)?.bounds ?? null;
+      tiles.delete(id);
+      return old;
+    },
+    apply(x, y, h) {
+      for (const g of tiles.values()) {
+        const b = g.bounds;
+        if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue;
+        for (const c of g.near(x, y)) h += craterOffset(c.r, Math.hypot(x - c.x, y - c.y));
+      }
+      return h;
+    },
   };
 }
 

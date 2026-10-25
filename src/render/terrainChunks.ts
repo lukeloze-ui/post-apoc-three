@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { smoothSurfaceHeight, surfaceHeight, type Surface } from '../world/surface';
+import type { Bounds } from '../world/terrain';
 import { heightTint, type TerrainColorFn } from './terrainColor';
 
 // World frame: x metres east, y metres up (absolute height), z metres south (so local y north = -z).
@@ -24,6 +25,8 @@ const LODS: readonly Lod[] = [
   { segs: 20, maxDist: 2500, rough: false, skirt: 20 },
   { segs: 10, maxDist: Infinity, rough: false, skirt: 40 },
 ];
+/** The first LODS entries (4 m and 8 m spacing) are fine enough to show small craters. */
+const FINE_LEVELS = 2;
 /** A chunk keeps its finer level until the player is this far past the threshold, so walking a boundary doesn't thrash. */
 const HYSTERESIS_M = 60;
 /** Re-evaluate levels after the player moves this far. */
@@ -223,6 +226,19 @@ export class TerrainChunks {
     this.colorFn = fn;
     for (const c of this.chunks) c.dirty = true;
     this.force = true;
+  }
+
+  /**
+   * The ground changed inside this local-metre box (small craters appeared or went): rebuild the chunks it touches
+   * that are at a level fine enough to show it (spacing 8 m or less). Coarser chunks pick it up if they get finer.
+   */
+  invalidate(b: Bounds): void {
+    for (const c of this.chunks) {
+      if (c.level < 0 || c.level > FINE_LEVELS - 1) continue;
+      if (b.x1 < c.x0 || b.x0 > c.x0 + CHUNK_M || b.y1 < c.y0 || b.y0 > c.y0 + CHUNK_M) continue;
+      c.dirty = true;
+      this.force = true;
+    }
   }
 
   /** Build every chunk now for a player at local (x, y). For the first frame. */
