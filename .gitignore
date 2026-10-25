@@ -1,0 +1,3 @@
+﻿# claude-batch.ps1 run logs (the stream log alone runs to tens of MB)
+Tools/batch-logs/
+.claude/settings.local.json
