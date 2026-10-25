@@ -33,6 +33,8 @@ import { fetchDistricts } from './world/districts';
 import { osgbToLocal } from './world/geo';
 import { createStatsReadout } from './ui/debug/stats';
 import { clockLabel, createHud, createInteractHud } from './ui/hud';
+import { NORMAL_FOV_DEG, RAISE_SEC, Scope, sensitivityScale } from './sim/scope';
+import { createScopeOverlay } from './ui/scopeOverlay';
 import { createPlayerHud } from './ui/playerHud';
 import { createHazardHud } from './ui/hazardHud';
 import { DeadBirds } from './render/deadBirds';
@@ -198,6 +200,46 @@ async function main(): Promise<void> {
   const bob = new HeadBob();
   const playerHud = params.fly ? null : createPlayerHud();
   const hazardHud = params.fly ? null : createHazardHud();
+  // The scope: hold right mouse or B for the binoculars, R toggles a sighted rifle. The reveal reads scope.scoped.
+  const scope = new Scope(player.party.pack);
+  const scopeOverlay = createScopeOverlay();
+  let rightDown = false;
+  let bDown = false;
+  const syncBinoculars = (): void => scope.setBinoculars(rightDown || bDown);
+  window.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  window.addEventListener('mousedown', (ev) => {
+    if (ev.button === 2) {
+      rightDown = true;
+      syncBinoculars();
+    }
+  });
+  window.addEventListener('mouseup', (ev) => {
+    if (ev.button === 2) {
+      rightDown = false;
+      syncBinoculars();
+    }
+  });
+  window.addEventListener('keydown', (ev) => {
+    if (ev.code === 'KeyB') bDown = true;
+    else if (ev.code === 'KeyR' && !ev.repeat) scope.toggleRifle();
+    else return;
+    syncBinoculars();
+  });
+  window.addEventListener('keyup', (ev) => {
+    if (ev.code !== 'KeyB') return;
+    bDown = false;
+    syncBinoculars();
+  });
+  window.addEventListener('blur', () => {
+    rightDown = false;
+    bDown = false;
+    syncBinoculars();
+  });
+  if (params.scope) {
+    rightDown = true;
+    syncBinoculars();
+    scope.update(RAISE_SEC);
+  }
   // E searches, digs or forces what the player is looking at; the changes go into groundDeltas, then the tile is redrawn.
   const interactHud = createInteractHud();
   let target: Target | undefined;
@@ -308,12 +350,16 @@ async function main(): Promise<void> {
       }))
     : null;
 
-  window.__game = { params, clock, player, walkLog, terrain, surface, chunks, linework, woodsAndBuildings, damage, groundDetail, districts, look, ...gs };
+  window.__game = { params, clock, player, walkLog, terrain, surface, chunks, linework, woodsAndBuildings, damage, groundDetail, districts, look, scope, ...gs };
 
   gs.run(
     (dt) => {
       if (paperMap.visible || packScreen.visible) {
         pressedE = false;
+        scope.update(-1);
+        scopeOverlay.update(null, 0);
+        gs.camera.fov = NORMAL_FOV_DEG;
+        gs.camera.updateProjectionMatrix();
         look.apply(gs.camera);
         return;
       }
@@ -340,6 +386,14 @@ async function main(): Promise<void> {
         interactHud.tick(performance.now());
       }
       updateSky();
+      scope.update(dt);
+      player.extraPace = scope.pace;
+      look.sensitivityScale = sensitivityScale(scope.fov);
+      if (gs.camera.fov !== scope.fov) {
+        gs.camera.fov = scope.fov;
+        gs.camera.updateProjectionMatrix();
+      }
+      scopeOverlay.update(scope.visibleKind, scope.raise);
       look.apply(gs.camera);
       chunks.update(gs.camera.position.x, -gs.camera.position.z);
       linework.update(gs.camera.position.x, -gs.camera.position.z);

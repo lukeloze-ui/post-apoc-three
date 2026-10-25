@@ -65,6 +65,8 @@ export class Player {
   conditions: Conditions | null = null;
   speedFactor = 1;
   effortFactor = 1;
+  /** Pace multiplier set by the caller, e.g. below 1 while looking through the scope. */
+  extraPace = 1;
   /** Modelled pace here, metres per game second; 0 while resting. */
   paceMs = 0;
   /** Metres per game second actually covered in the last step. */
@@ -136,7 +138,7 @@ export class Player {
     this.z = world.heightAt(this.x, this.y);
     this.conditions = world.conditionsAt?.(this.x, this.y) ?? null;
     this.groundType = this.conditions?.groundType ?? world.groundTypeAt(this.x, this.y);
-    this.speedFactor = (this.conditions?.speedFactor ?? 1) * partyConditionPace(this.hazards.conditions, this.party);
+    this.speedFactor = this.extraPace * (this.conditions?.speedFactor ?? 1) * partyConditionPace(this.hazards.conditions, this.party);
     this.effortFactor = (this.conditions?.effortFactor ?? 1) * partyConditionEffort(this.hazards.conditions, this.party);
     const rise = world.heightAt(this.x + dx * b, this.y + dy * b) - world.heightAt(this.x - dx * b, this.y - dy * b);
     this.grade = clamp(rise / (2 * b), -MAX_GRADE, MAX_GRADE);

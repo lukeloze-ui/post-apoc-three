@@ -10,6 +10,8 @@ const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > 
 export class Look {
   yaw: number;
   pitch: number;
+  /** Scales the mouse turn; the scope sets it from its field of view. */
+  sensitivityScale = 1;
 
   constructor(dom: HTMLElement, yaw = 0, pitch = 0) {
     this.yaw = Look.wrapYaw(yaw);
@@ -19,7 +21,8 @@ export class Look {
     });
     document.addEventListener('mousemove', (ev) => {
       if (document.pointerLockElement !== dom) return;
-      this.turn(ev.movementX * SENSITIVITY, -ev.movementY * SENSITIVITY);
+      const s = SENSITIVITY * this.sensitivityScale;
+      this.turn(ev.movementX * s, -ev.movementY * s);
     });
   }
 

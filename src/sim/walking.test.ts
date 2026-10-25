@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { START, YES_TOR, heightAt, parseTerrain, type TerrainMeta } from '../world/terrain';
 import { addItem } from './pack';
 import { defaultParty, loadBand, loadShare, personEffects, type Party } from './load';
 import {
@@ -66,6 +68,32 @@ describe('stamina', () => {
     stepWalk(a, light, 'road', 0, 600);
     stepWalk(b, heavy, 'road', 0, 600);
     expect(b.stamina.parent!).toBeLessThan(a.stamina.parent!);
+  });
+});
+
+describe('climbing to look', () => {
+  it('walking from the start to the Yes Tor summit on a path costs at least 20 game minutes and real stamina', () => {
+    const dir = 'public/world/';
+    const meta = JSON.parse(readFileSync(dir + 'terrain.json', 'utf8')) as TerrainMeta;
+    const terrain = parseTerrain(meta, readFileSync(dir + 'terrain.bin'), readFileSync(dir + 'landcover.bin'));
+    const party = defaultParty();
+    const state = newWalkState(party);
+    const total = Math.hypot(YES_TOR.x - START.x, YES_TOR.y - START.y);
+    const ux = (YES_TOR.x - START.x) / total;
+    const uy = (YES_TOR.y - START.y) / total;
+    expect(heightAt(terrain, YES_TOR.x, YES_TOR.y) - heightAt(terrain, START.x, START.y)).toBeGreaterThan(100);
+    let along = 0;
+    let sec = 0;
+    const dt = 5;
+    while (along < total && sec < 6 * 3600) {
+      const h = (d: number): number => heightAt(terrain, START.x + ux * d, START.y + uy * d);
+      const grade = (h(along + 3) - h(Math.max(0, along - 3))) / 6;
+      along += stepWalk(state, party, 'path', grade, dt);
+      sec += dt;
+    }
+    expect(along).toBeGreaterThanOrEqual(total);
+    expect(sec / 60).toBeGreaterThanOrEqual(20);
+    expect(1 - state.stamina.parent!).toBeGreaterThan(0.05);
   });
 });
 

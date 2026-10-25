@@ -21,6 +21,8 @@ export interface UrlParams {
   fresh: boolean;
   /** Dev stats readout: fps, draw calls, triangles. */
   stats: boolean;
+  /** Dev: start with the binoculars raised (gives the pack binoculars if it has none). */
+  scope: boolean;
   /** Debug view zoom, pixels per metre (with view=debug, e and n). */
   zoom?: number;
 }
@@ -39,6 +41,7 @@ export function parseUrlParams(search: string): UrlParams {
     fly: q.get('fly') === '1',
     fresh: q.get('fresh') === '1',
     stats: q.get('stats') === '1',
+    scope: q.get('scope') === '1',
   };
   const e = num(q.get('e'));
   const n = num(q.get('n'));

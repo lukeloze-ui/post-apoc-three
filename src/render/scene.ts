@@ -105,6 +105,10 @@ export function createScene(parent: HTMLElement): GameScene {
       onFrame(dt);
       renderer.info.reset();
       skyCamera.quaternion.copy(camera.quaternion);
+      if (skyCamera.fov !== camera.fov) {
+        skyCamera.fov = camera.fov;
+        skyCamera.updateProjectionMatrix();
+      }
       renderer.clear();
       renderer.render(skyScene, skyCamera);
       renderer.clearDepth();
