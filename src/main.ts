@@ -4,7 +4,9 @@ import { Look } from './render/look';
 import { FlyCamera } from './render/fly';
 import { TerrainChunks } from './render/terrainChunks';
 import { buildTerrainApron } from './render/terrainApron';
-import { createBandColorFn } from './render/terrainColor';
+import { createBandColorFn, createDamageColorFn } from './render/terrainColor';
+import { DistrictDamage } from './render/damage';
+import { renderLevelAt, showsDamage } from './render/tileReveal';
 import { buildLakeWater } from './render/lakeWater';
 import { Linework } from './render/linework';
 import { WoodsAndBuildings } from './render/woodsAndBuildings';
@@ -14,7 +16,7 @@ import { sunPosition } from './sim/sun';
 import { formatHours, legLabel } from './sim/naismith';
 import { LegTracker } from './sim/legTracker';
 import { fetchTerrain, heightAt, START } from './world/terrain';
-import { createSurface } from './world/surface';
+import { createCraterModifier, createSurface } from './world/surface';
 import { fetchFlood } from './world/flood';
 import { fetchLakes } from './world/lakes';
 import { createOverheadView } from './ui/debug/overheadView';
@@ -50,6 +52,10 @@ async function main(): Promise<void> {
     fetchLakes('/world/', terrain),
     fetchFeatures(),
   ]);
+  // The hidden district damage: craters carve the ground everyone walks on; the renderer shows the rest by tile.
+  const districts = await fetchDistricts('/world/', features);
+  const craters = districts.tiles.flatMap((t) => t.craters);
+  const strikeZones = districts.tiles.flatMap((t) => t.strikeZones);
 
   // ?fresh=1 skips loading. The URL's position, facing and time win over the save.
   const save = new SaveGame({ fresh: params.fresh });
@@ -57,13 +63,17 @@ async function main(): Promise<void> {
   const clock = new GameClock(params.t ?? parseClockSave(save.peek('clock')));
   const hud = createHud();
   const gs = createScene(document.body);
+  let sunAltitude = 0;
   const updateSky = (): void => {
     const sun = sunPosition(clock.utcMs);
+    sunAltitude = sun.altitude;
     gs.setSun(sun.altitude, sun.azimuth);
     hud.update(clockLabel(clock.day, clock.hh, clock.mm));
   };
   updateSky();
-  const surface = createSurface(terrain);
+  const craterMod = createCraterModifier(craters);
+  const surface = createSurface(terrain, craterMod ? [craterMod] : []);
+  const plainSurface = createSurface(terrain);
 
   const start =
     params.e !== undefined && params.n !== undefined
@@ -71,18 +81,24 @@ async function main(): Promise<void> {
       : saved
         ? { x: saved.x, y: saved.y }
         : { x: START.x, y: START.y };
-  const colorFn = createBandColorFn(terrain, flood);
-  const chunks = new TerrainChunks(surface, { colorFn });
+  const bandColorFn = createBandColorFn(terrain, flood);
+  const colorFn = createDamageColorFn(bandColorFn, craters, strikeZones);
+  const chunks = new TerrainChunks(surface, {
+    colorFn,
+    surfaceFor: (x0, y0) => (showsDamage(renderLevelAt(x0 + 1, y0 + 1)) ? surface : plainSurface),
+  });
   chunks.buildAll(start.x, start.y);
-  const linework = new Linework(surface, features, flood);
+  const linework = new Linework(surface, features, flood, { districts, plainSurface });
+  const damage = new DistrictDamage(surface, features, districts);
   const woodsAndBuildings = new WoodsAndBuildings(surface, features, flood);
   woodsAndBuildings.buildAll(start.x, start.y);
   gs.scene.add(
     chunks.group,
-    buildTerrainApron(surface, colorFn),
+    buildTerrainApron(surface, bandColorFn),
     buildLakeWater(lakes, clock.gameDays),
     linework.group,
     woodsAndBuildings.group,
+    damage.group,
   );
   const look = new Look(gs.renderer.domElement, params.yaw ?? saved?.yaw ?? START.yaw, params.pitch ?? 0);
   const walkWorld = createWalkWorld({ surface, roads: buildRoadIndex(features.roads), lakes, gameDays: () => clock.gameDays });
@@ -98,7 +114,7 @@ async function main(): Promise<void> {
 
   // Dev tool: only in dev builds or with ?view=debug. The hidden district damage is shown only here.
   const wantDebug = import.meta.env.DEV || params.view === 'debug';
-  if (wantDebug) registerDistrictLayers(await fetchDistricts('/world/', features));
+  if (wantDebug) registerDistrictLayers(districts);
   const debugView = wantDebug
     ? createOverheadView({ terrain, flood, lakes, gameDay: clock.gameDays }, () => ({
         x: gs.camera.position.x,
@@ -158,7 +174,7 @@ async function main(): Promise<void> {
       }))
     : null;
 
-  window.__game = { params, clock, player, walkLog, terrain, surface, chunks, linework, woodsAndBuildings, look, ...gs };
+  window.__game = { params, clock, player, walkLog, terrain, surface, chunks, linework, woodsAndBuildings, damage, districts, look, ...gs };
 
   gs.run(
     (dt) => {
@@ -187,6 +203,7 @@ async function main(): Promise<void> {
       chunks.update(gs.camera.position.x, -gs.camera.position.z);
       linework.update(gs.camera.position.x, -gs.camera.position.z);
       woodsAndBuildings.update(gs.camera.position.x, -gs.camera.position.z);
+      damage.update(gs.camera, clock.gameDays, sunAltitude, performance.now() / 1000);
       stats?.update(dt);
       if (debugView?.visible) debugView.redraw();
     },

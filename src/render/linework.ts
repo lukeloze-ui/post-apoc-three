@@ -10,8 +10,10 @@ import {
   WATER_FRESH,
   WATER_STREAM,
 } from '../world/palette';
+import type { Districts } from '../world/districts';
 import { surfaceHeight, type Surface } from '../world/surface';
 import { CHUNK_M } from './terrainChunks';
+import { renderLevelAt, showsDamage } from './tileReveal';
 
 // World frame: x metres east, y metres up (absolute height), z metres south (so local y north = -z).
 
@@ -56,6 +58,15 @@ const ARCH_OPENING = 0.7;
 const ARCH_MIN_RISE_M = 1;
 const PIER_SPAN_M = 18;
 const PIER_ALONG_M = 1.4;
+/** Half the gap a fallen unrecorded crossing leaves in its road or railway, by what it crossed (metres). */
+const GAP_HALF_M = { river: 7, stream: 2.5, none: 5 } as const;
+
+/** District damage the linework shows in tiles at district render level or above. */
+export interface LineworkDamage {
+  districts: Districts;
+  /** The surface without the craters, for draping in tiles below district level. */
+  plainSurface: Surface;
+}
 
 const clamp01 = (t: number): number => (t < 0 ? 0 : t > 1 ? 1 : t);
 const smooth01 = (t: number): number => {
@@ -224,16 +235,34 @@ export class Linework {
   private readonly mud = new THREE.Color(STRAND_MUD);
   private readonly stone = new THREE.Color(BRIDGE_STONE);
   private readonly tmp = new THREE.Color();
+  /** Gaps cut by fallen unrecorded crossings, by road or rail id. */
+  private readonly gaps = new Map<string, { x: number; y: number; half: number }[]>();
 
   constructor(
     private readonly surface: Surface,
     features: Features,
     private readonly flood: Flood,
+    private readonly damage?: LineworkDamage,
   ) {
     this.group.name = 'linework';
     const t = surface.terrain;
     this.nx = Math.ceil(t.sizeX / CHUNK_M);
     this.ny = Math.ceil(t.sizeY / CHUNK_M);
+
+    // Fallen bridges: a recorded bridge loses its whole deck span (its rubble is DistrictDamage's); an unrecorded
+    // crossing leaves a gap in the road or railway that crosses.
+    const fallen = new Set<string>();
+    const kinds = new Map(features.rivers.map((r) => [r.id, r.kind]));
+    for (const b of damage?.districts.bridges ?? []) {
+      if (b.standing || !showsDamage(renderLevelAt(b.x, b.y))) continue;
+      if (b.source === 'osm') fallen.add(b.id);
+      else {
+        const half = GAP_HALF_M[b.crosses === null ? 'none' : (kinds.get(b.crosses) ?? 'none')];
+        let list = this.gaps.get(b.refId);
+        if (!list) this.gaps.set(b.refId, (list = []));
+        list.push({ x: b.x, y: b.y, half });
+      }
+    }
 
     const bridgeIds = new Set(features.bridges.map((b) => b.refId));
     for (const r of features.roads) if (!bridgeIds.has(r.id)) this.addRoad(r.id, r.cls, r.pts);
@@ -246,7 +275,7 @@ export class Linework {
     for (const b of features.bridges) {
       const road = b.on === 'road' ? roads.get(b.refId) : undefined;
       const carrier = b.on === 'road' ? road : rail.get(b.refId);
-      if (carrier) this.addBridge(b, carrier.pts, road?.cls ?? null);
+      if (carrier && !fallen.has(b.id)) this.addBridge(b, carrier.pts, road?.cls ?? null);
     }
     this.finish();
   }
@@ -312,6 +341,28 @@ export class Linework {
     const e = h - hwAt(this.flood.hw, x, y);
     const k = 0.5 * smooth01((0.5 - e) / 2.5) + 0.2 * smooth01((-e - (STRANDLINE_M - 3)) / 6);
     return out.copy(base).lerp(this.mud, k);
+  }
+
+  /** Ground height to drape on: the carved surface where the tile shows damage, the plain one where it doesn't. */
+  private ground(x: number, y: number): number {
+    const plain = this.damage && !showsDamage(renderLevelAt(x, y));
+    return surfaceHeight(plain ? this.damage!.plainSurface : this.surface, x, y);
+  }
+
+  /** The resampled line split into the runs left between fallen-crossing gaps (all of it when there are none). */
+  private cutGaps(id: string, p: [number, number][]): [number, number][][] {
+    const gaps = this.gaps.get(id);
+    if (!gaps) return [p];
+    const runs: [number, number][][] = [];
+    let run: [number, number][] = [];
+    for (const q of p) {
+      if (gaps.some((g) => Math.hypot(q[0] - g.x, q[1] - g.y) < g.half)) {
+        if (run.length >= 2) runs.push(run);
+        run = [];
+      } else run.push(q);
+    }
+    if (run.length >= 2) runs.push(run);
+    return runs;
   }
 
   // ---- draped ribbons ----
@@ -400,13 +451,16 @@ export class Linework {
 
   private addRoad(id: string, cls: RoadClass, pts: readonly Pt[]): void {
     if (pts.length < 2) return;
-    const p = resample(pts, STEP_M);
+    for (const p of this.cutGaps(id, resample(pts, STEP_M))) this.addRoadRun(id, cls, p);
+  }
+
+  private addRoadRun(id: string, cls: RoadClass, p: [number, number][]): void {
     const w = ROAD_WIDTH_M[cls];
     const offsets = cls === 'path' ? [-w / 2, w / 2] : [-w / 2, 0, w / 2];
     const base = new THREE.Color(ROAD_COLORS[cls]);
     const lift = DRAPE_M + CLASS_LIFT_M[cls];
     const data = this.rows(p, offsets, (x, y, _i, _k, c) => {
-      const h = surfaceHeight(this.surface, x, y) + lift;
+      const h = this.ground(x, y) + lift;
       this.muddy(base, x, y, h, c);
       return h;
     });
@@ -415,14 +469,17 @@ export class Linework {
 
   private addRail(id: string, pts: readonly Pt[]): void {
     if (pts.length < 2) return;
-    const p = resample(pts, STEP_M);
+    for (const p of this.cutGaps(id, resample(pts, STEP_M))) this.addRailRun(id, p);
+  }
+
+  private addRailRun(id: string, p: [number, number][]): void {
     const half = RAIL_WIDTH_M / 2;
     const offsets = [-half, -RAIL_CENTRE_HALF_M, RAIL_CENTRE_HALF_M, half];
     const ballast = new THREE.Color(RAIL_BALLAST);
     const centre = new THREE.Color(RAIL_CENTRE);
     const lift = DRAPE_M + RAIL_LIFT_M;
     const data = this.rows(p, offsets, (x, y, _i, k, c) => {
-      const h = surfaceHeight(this.surface, x, y) + lift;
+      const h = this.ground(x, y) + lift;
       this.muddy(k === 0 || k === 3 ? ballast : centre, x, y, h, c);
       return h;
     });
@@ -446,7 +503,7 @@ export class Linework {
       const lx = -(dy[i] as number) * (miter[i] as number);
       const ly = (dx[i] as number) * (miter[i] as number);
       let m = Infinity;
-      for (const o of across) m = Math.min(m, surfaceHeight(this.surface, pt[0] + lx * o, pt[1] + ly * o));
+      for (const o of across) m = Math.min(m, this.ground(pt[0] + lx * o, pt[1] + ly * o));
       low[i] = m;
     }
     const level = new Float64Array(p.length);
@@ -475,7 +532,7 @@ export class Linework {
     if (f[0] === l[0] && f[1] === l[1]) ring.pop();
     if (ring.length < 3) return;
     const heights = resample([...ring, f], STEP_M * 2)
-      .map(([x, y]) => surfaceHeight(this.surface, x, y))
+      .map(([x, y]) => this.ground(x, y))
       .sort((a, b) => a - b);
     const level = heights[Math.floor(heights.length / 2)] as number;
     const tris = THREE.ShapeUtils.triangulateShape(
@@ -524,7 +581,7 @@ export class Linework {
     const P = resample(pts, BRIDGE_STEP_M);
     const n = P.length;
     const { dx, dy, miter } = frames(P);
-    const g = P.map((q) => surfaceHeight(this.surface, q[0], q[1]));
+    const g = P.map((q) => this.ground(q[0], q[1]));
     const s = new Float64Array(n);
     for (let i = 1; i < n; i++) {
       const a = P[i - 1] as [number, number];

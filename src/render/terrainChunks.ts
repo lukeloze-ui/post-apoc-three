@@ -46,6 +46,11 @@ interface Chunk {
 
 export interface TerrainChunksOptions {
   colorFn?: TerrainColorFn;
+  /**
+   * The surface a chunk's mesh is built from, by its SW corner: lets tiles below district render level leave the
+   * craters out of the mesh (walking still uses the carved surface). Default: the surface given to the constructor.
+   */
+  surfaceFor?: (x0: number, y0: number) => Surface;
   budgetMs?: number;
 }
 
@@ -181,16 +186,18 @@ export class TerrainChunks {
   private queue: Chunk[] = [];
   private colorFn: TerrainColorFn;
   private readonly budgetMs: number;
+  private readonly surfaceFor: (x0: number, y0: number) => Surface;
   private px = Number.NaN;
   private py = Number.NaN;
   private force = true;
 
   constructor(
-    private readonly surface: Surface,
+    surface: Surface,
     opts: TerrainChunksOptions = {},
   ) {
     this.colorFn = opts.colorFn ?? heightTint;
     this.budgetMs = opts.budgetMs ?? BUDGET_MS;
+    this.surfaceFor = opts.surfaceFor ?? (() => surface);
     this.group.name = 'terrain';
     const nx = Math.ceil(surface.terrain.sizeX / CHUNK_M);
     const ny = Math.ceil(surface.terrain.sizeY / CHUNK_M);
@@ -252,7 +259,7 @@ export class TerrainChunks {
     const level = lodFor(chunkDist(c, this.px, this.py), c.level);
     if (level === c.level && !c.dirty) return;
     const old = c.mesh.geometry;
-    c.mesh.geometry = buildChunkGeometry(this.surface, this.colorFn, c.x0, c.y0, LODS[level] as Lod);
+    c.mesh.geometry = buildChunkGeometry(this.surfaceFor(c.x0, c.y0), this.colorFn, c.x0, c.y0, LODS[level] as Lod);
     c.mesh.visible = true;
     old.dispose();
     c.level = level;

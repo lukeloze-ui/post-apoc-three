@@ -179,3 +179,81 @@ export function surfaceHeight(s: Surface, x: number, y: number): number {
 export function smoothSurfaceHeight(s: Surface, x: number, y: number): number {
   return applyModifiers(s, x, y, baseHeight(s.terrain, x, y));
 }
+
+// ---- Craters ----
+
+/** Bowl depth and rim crest height as fractions of the diameter; the raised rim reaches this many radii out. */
+export const CRATER_DEPTH_PER_D = 0.2;
+export const CRATER_RIM_PER_D = 0.04;
+export const CRATER_RIM_REACH = 1.5;
+
+/** Anything round with a centre and radius, local metres (district craters, strike zones). */
+export interface RoundSpot {
+  x: number;
+  y: number;
+  r: number;
+}
+
+/**
+ * Height change (metres) a crater of radius r makes dist metres from its centre: a parabolic bowl 0.2D deep rising
+ * to a sharp rim crest 0.04D above the ground, which falls smoothly back to nothing at 1.5 radii.
+ */
+export function craterOffset(r: number, dist: number): number {
+  const u = dist / r;
+  if (u >= CRATER_RIM_REACH) return 0;
+  const depth = CRATER_DEPTH_PER_D * 2 * r;
+  const rim = CRATER_RIM_PER_D * 2 * r;
+  if (u <= 1) return -depth + (depth + rim) * u * u;
+  const s = (u - 1) / (CRATER_RIM_REACH - 1);
+  return rim * (1 - s * s * (3 - 2 * s));
+}
+
+/** Spots bucketed on a square grid so a point finds the few that might reach it. */
+export interface SpotGrid<T extends RoundSpot> {
+  /** Spots whose reach (r times the grid's reach factor) may cover (x, y); a superset, check the distance. */
+  near(x: number, y: number): readonly T[];
+  /** Box holding every spot's reach, or null when there are none. */
+  bounds: Bounds | null;
+}
+
+const SPOT_CELL_M = 64;
+const NO_SPOTS: readonly never[] = [];
+
+export function spotGrid<T extends RoundSpot>(spots: readonly T[], reach: number, cellM = SPOT_CELL_M): SpotGrid<T> {
+  const cells = new Map<number, T[]>();
+  // Patch coordinates are 0..10 000 m; the offset keeps a little apron outside it in positive keys.
+  const key = (i: number, j: number): number => (j + 1024) * 4096 + (i + 1024);
+  let bounds: Bounds | null = null;
+  for (const s of spots) {
+    const R = s.r * reach;
+    const b = { x0: s.x - R, y0: s.y - R, x1: s.x + R, y1: s.y + R };
+    bounds = bounds
+      ? { x0: Math.min(bounds.x0, b.x0), y0: Math.min(bounds.y0, b.y0), x1: Math.max(bounds.x1, b.x1), y1: Math.max(bounds.y1, b.y1) }
+      : b;
+    for (let j = Math.floor(b.y0 / cellM); j <= Math.floor(b.y1 / cellM); j++) {
+      for (let i = Math.floor(b.x0 / cellM); i <= Math.floor(b.x1 / cellM); i++) {
+        const k = key(i, j);
+        const list = cells.get(k);
+        if (list) list.push(s);
+        else cells.set(k, [s]);
+      }
+    }
+  }
+  return {
+    near: (x, y) => cells.get(key(Math.floor(x / cellM), Math.floor(y / cellM))) ?? NO_SPOTS,
+    bounds,
+  };
+}
+
+/** One modifier carving every crater (overlapping craters add up). Null when there are none. */
+export function createCraterModifier(craters: readonly RoundSpot[]): HeightModifier | null {
+  const grid = spotGrid(craters, CRATER_RIM_REACH);
+  if (!grid.bounds) return null;
+  return {
+    bounds: grid.bounds,
+    apply(x, y, h) {
+      for (const c of grid.near(x, y)) h += craterOffset(c.r, Math.hypot(x - c.x, y - c.y));
+      return h;
+    },
+  };
+}

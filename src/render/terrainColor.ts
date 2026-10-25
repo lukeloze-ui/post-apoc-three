@@ -2,8 +2,14 @@ import * as THREE from 'three';
 import { STRANDLINE_M, hwAt, type Flood } from '../world/flood';
 import {
   BEDROCK,
+  CRATER_EARTH,
+  CRATER_SPOIL,
+  GLASSY,
+  GLASSY_SHEEN,
   LANDCOVER_COLORS,
   LANDCOVER_DEFAULT,
+  SCORCH,
+  SCORCH_ASH,
   SCOUR_DARK,
   SCOUR_MUD,
   STRAND_DEBRIS,
@@ -11,7 +17,10 @@ import {
   STRAND_SILT,
   WRACK,
 } from '../world/palette';
+import type { StrikeZone } from '../world/districts';
+import { spotGrid, type RoundSpot } from '../world/surface';
 import { heightAt, type Terrain } from '../world/terrain';
+import { renderLevelAt, showsDamage } from './tileReveal';
 
 /**
  * Per-vertex colour hook for the terrain chunks and apron: writes the colour for local (x, y) at height h into out.
@@ -193,5 +202,57 @@ export function createBandColorFn(terrain: Terrain, flood: Flood): TerrainColorF
       .lerp(rock, smooth01((slope - ROCK_SLOPE_LO) / (ROCK_SLOPE_HI - ROCK_SLOPE_LO)))
       .multiplyScalar(tone);
     out.copy(strand).lerp(scour, toScour);
+  };
+}
+
+// ---- District damage colouring ----
+
+/** Strike-zone edges are broken up by noise this many radii either side of the radius. */
+const STRIKE_EDGE = 0.18;
+/** Spoil colour reaches this many radii out from a crater's centre. */
+const SPOIL_REACH = 1.7;
+const SEED_STRIKE = 0x2545f491;
+
+/**
+ * Wraps a colour hook with the district damage of tiles at district render level or above: raw earth in crater
+ * bowls and spoil on their rims, burnt black ground with ash (burning strike zones) or dark glassy rock (glassy).
+ */
+export function createDamageColorFn(
+  base: TerrainColorFn,
+  craters: readonly RoundSpot[],
+  strikeZones: readonly StrikeZone[],
+): TerrainColorFn {
+  const grid = spotGrid(craters, SPOIL_REACH);
+  const earth = col(CRATER_EARTH);
+  const spoil = col(CRATER_SPOIL);
+  const scorch = col(SCORCH);
+  const ash = col(SCORCH_ASH);
+  const glassy = col(GLASSY);
+  const sheen = col(GLASSY_SHEEN);
+  const tmp = new THREE.Color();
+  return (x, y, h, out) => {
+    base(x, y, h, out);
+    if (!showsDamage(renderLevelAt(x, y))) return;
+    for (const c of grid.near(x, y)) {
+      const u = Math.hypot(x - c.x, y - c.y) / c.r;
+      if (u >= SPOIL_REACH) continue;
+      const m = valueNoise(x, y, 2.5, SEED_MOTTLE);
+      if (u < 1) out.lerp(tmp.copy(earth).lerp(spoil, smooth01((u - 0.6) / 0.4) * 0.6), 0.85 - 0.25 * m);
+      else out.lerp(spoil, (1 - smooth01((u - 1) / (SPOIL_REACH - 1))) * (0.75 - 0.3 * m));
+    }
+    for (const z of strikeZones) {
+      const dx = x - z.x;
+      const dy = y - z.y;
+      const R = z.r * (1 + STRIKE_EDGE);
+      if (dx * dx + dy * dy >= R * R) continue;
+      const n = valueNoise(x, y, 14, SEED_STRIKE);
+      const u = Math.hypot(dx, dy) / z.r + (n - 0.5) * 2 * STRIKE_EDGE;
+      const k = 1 - smooth01((u - 0.85) / 0.15);
+      if (k <= 0) continue;
+      const m = valueNoise(x, y, 3, SEED_STRIKE ^ 0x68e31da4);
+      if (z.kind === 'burning') tmp.copy(scorch).lerp(ash, smooth01((m - 0.45) / 0.35) * 0.8);
+      else tmp.copy(glassy).lerp(sheen, smooth01((m - 0.6) / 0.15) * 0.7);
+      out.lerp(tmp, k);
+    }
   };
 }
