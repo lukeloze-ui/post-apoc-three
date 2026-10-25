@@ -22,6 +22,9 @@ const defs: ItemDef[] = [
   { id: 'dried_meat', name: 'Smoked or dried meat', kg: 1, stackable: true, notes: 'Quantity is in kg. About three times the calories of fresh meat per kilo.' },
   { id: 'water', name: 'Water', kg: 1, stackable: true, notes: 'Quantity is in litres, 1 kg each.' },
   { id: 'gas_canister', name: 'Gas canister', kg: 0.4, stackable: true, notes: '230 g canister. Boils about 20 litres. Cannot be refilled.' },
+  { id: 'spade', name: 'Spade', kg: 1.4, stackable: false, notes: 'Digs out buried loot. No spec weight; assumed.' },
+  { id: 'hatchet', name: 'Hatchet', kg: 0.8, stackable: false, notes: 'Chops wood and forces doors. No spec weight; assumed.' },
+  { id: 'crowbar', name: 'Crowbar', kg: 1.6, stackable: false, notes: 'Forces doors and shifts debris. No spec weight; assumed.' },
   { id: 'binoculars', name: 'Binoculars', kg: 0.6, stackable: false, notes: 'Needed for the scope.' },
   { id: 'dry_bag', name: 'Dry bag', kg: 0.1, stackable: false, notes: 'Marks contents as sealed, for swimming.' },
 ];

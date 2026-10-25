@@ -31,6 +31,7 @@ import { STORM } from '../decisions';
 import {
   CRATER_MAX_D,
   CRATER_MIN_D,
+  PEAK_CRATERS_PER_TILE,
   canSee,
   craterDiameter,
   poisson,
@@ -44,8 +45,6 @@ import { serialise } from './districts';
 const dir = 'public/world/';
 const SEED = 0xc4a7e25;
 
-/** Craters of CRATER_MIN_D and up per tile at the storm centre; thins with strikeDensity. */
-const PEAK_CRATERS_PER_TILE = 30;
 /** Craters keep this far from the start, metres. */
 const START_CLEAR_M = 60;
 /** Crater diameter from which a crater can hold standing water, and the relief (m) that counts as low ground. */

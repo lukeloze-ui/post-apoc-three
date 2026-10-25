@@ -16,6 +16,9 @@ const COLOR: Record<string, string> = {
   car: '#ff3b3b',
   trunk: '#8a5a2b',
   wrack: '#e0c060',
+  crater: '#7a4ac0',
+  door: '#40c0ff',
+  spot: '#ffffff',
 };
 const BROKEN_COLOR: Record<string, string> = { wall: '#7a6f66', hedgebank: '#8a7a3a' };
 

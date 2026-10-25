@@ -1,5 +1,5 @@
 {
-  "about": "Hand fixes to districts.json, applied by the last worldgen step (Tools/worldgen/steps/overrides.ts). kind is bridge, roadSegment, crater, strikeZone, fire or gasHollow; give exactly one of set, remove or add, and always a reason.",
+  "about": "Hand fixes to districts.json, applied by the last damage step (Tools/worldgen/steps/overrides.ts). groundLoot at the end fixes by hand what a building holds in its ground file (Tools/worldgen/steps/ground.ts); those buildings are never rolled. kind is bridge, roadSegment, crater, strikeZone, fire or gasHollow; give exactly one of set, remove or add, and always a reason.",
   "overrides": [
     { "kind": "roadSegment", "id": "w158203922-5", "set": { "blocked": false }, "reason": "Landslip on flat open moor at 594 m (slope 7%), far above the mark: nothing to slip." },
     { "kind": "roadSegment", "id": "w399665894-0", "set": { "blocked": false }, "reason": "Landslip on flat open moor at 616 m (slope 3%), far above the mark: nothing to slip." },
@@ -14,5 +14,9 @@
     { "kind": "crater", "id": "cr-camp-0", "add": { "x": 6813, "y": 4999, "r": 9, "water": false }, "reason": "SX 01: the camp is half wrecked. The generator keeps strikes off it (nearest crater 211 m out), so three craters are placed on buildings in its western half." },
     { "kind": "crater", "id": "cr-camp-1", "add": { "x": 6730, "y": 5099, "r": 11, "water": false }, "reason": "SX 01: the camp is half wrecked (on the NAAFI block)." },
     { "kind": "crater", "id": "cr-camp-2", "add": { "x": 6668, "y": 5014, "r": 8, "water": false }, "reason": "SX 01: the camp is half wrecked (on block 100)." }
+  ],
+  "groundLoot": [
+    { "building": "w52037660", "locked": false, "items": [["rifle_l403a1", 6], ["magazine_30", 4], ["round", 240]], "reason": "SX 01: the camp armoury (block 83, 52 m from the camp centre) is cracked open and holds L403A1 rifles, some ammunition and a few magazines." },
+    { "building": "w52037654", "locked": false, "items": [["air_rifle", 1], ["pellet_tin", 8]], "reason": "SX 01: a store room near the armoury (block 65) holds a plain .22 air rifle and thousands of pellets (8 tins of 500)." }
   ]
 }

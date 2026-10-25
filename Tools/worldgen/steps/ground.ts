@@ -11,6 +11,12 @@
 // - Wrack below the mark: density by distance from roads and buildings, piled in valley bottoms (flow accumulation and
 //   relative height over the filled DEM), concentrated in a line within a few metres below the mark, and heaped
 //   against the uphill face of standing walls and hedge banks.
+// - Small craters (5 m up to the district threshold) at the district crater density times the size-curve ratio, so the
+//   pocked falloff carries over; they stay off the start and out of lakes.
+// - Doors on standing buildings (above the mark, not hit): one on the longest wall, some locked.
+// - Loot (SX 01 Days 2 to 4, SX 03 bands; Tools/worldgen/rules/loot.ts): intact in standing buildings, sealed tins in the
+//   strandline wrack, buried (needs digging) in scour-zone foundations. The camp armoury and store room are fixed by hand
+//   (groundLoot in Tools/worldgen/overrides.json), never rolled.
 // Each kind has its own RNG from this step's seed, so retuning one kind never reshuffles another.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { Districts, Spot, StrikeZone } from '../../../src/world/districts';
@@ -24,13 +30,20 @@ import {
   objectKey,
   serialiseGround,
   validateGround,
+  DEBRIS_KINDS,
   type DebrisKind,
+  type GroundDoor,
   type GroundFile,
+  type GroundItemRow,
+  type GroundLoot,
   type GroundObject,
 } from '../../../src/world/ground';
 import { isUnderWater, parseLakes, type Lakes, type LakesMeta } from '../../../src/world/lakes';
-import { TILES_PER_SIDE, TILE_M, heightAt, parseTerrain, tileId, tileOf, type Terrain, type TerrainMeta } from '../../../src/world/terrain';
+import { START, TILES_PER_SIDE, TILE_M, heightAt, parseTerrain, tileId, tileOf, type Terrain, type TerrainMeta } from '../../../src/world/terrain';
+import { GROUND_CRATER_MIN_D, PEAK_CRATERS_PER_TILE, CRATER_MIN_D, craterDiameter, poisson, smallCratersPerDistrictCrater } from '../rules/craters';
+import { NO_LOOT_TYPES, SCOUR_LOOT_SCALE, rollBuildingLoot, rollWrackLoot } from '../rules/loot';
 import { mulberry32, type Rng } from '../rng';
+import { OVERRIDES_PATH } from './overrides';
 import type { Step } from '../steps';
 
 const dir = 'public/world/';
@@ -62,6 +75,14 @@ const SETTLE_R: Readonly<Record<SettlementKind, number>> = { town: 1200, village
 /** Building types that leave big rubble heaps. */
 const BIG_TYPES = new Set(['church', 'industrial', 'school', 'military', 'farm']);
 
+/** Small craters keep this far from the start, metres. */
+const START_CLEAR_M = 60;
+/** A door's width, metres, and the chance it is locked, by building type (unlisted types: 0.5). */
+const DOOR_W_M = 0.9;
+const LOCKED_P: Readonly<Record<string, number>> = { house: 0.5, farm: 0.6, shop: 0.7, pub: 0.7, church: 0.3, military: 0.5 };
+/** Buildings of these types get no door (sheds, outbuildings). */
+const NO_DOOR_TYPES: ReadonlySet<string> = new Set(['other']);
+
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 export interface GroundWorld {
@@ -70,6 +91,16 @@ export interface GroundWorld {
   lakes: Lakes;
   features: Features;
   districts: Districts;
+  /** Hand-fixed loot by building id (groundLoot in overrides.json). */
+  fixedLoot: FixedLoot[];
+}
+
+/** One hand-set building: exactly these items, and whether its door is locked. */
+export interface FixedLoot {
+  building: string;
+  locked: boolean;
+  items: [string, number][];
+  reason: string;
 }
 
 export function loadGroundWorld(base = dir): GroundWorld {
@@ -79,7 +110,8 @@ export function loadGroundWorld(base = dir): GroundWorld {
   const lakes = parseLakes(JSON.parse(readFileSync(base + 'lakes.json', 'utf8')) as LakesMeta, readFileSync(base + 'lakeid.bin'), terrain);
   const features = JSON.parse(readFileSync(base + 'features.json', 'utf8')) as Features;
   const districts = JSON.parse(readFileSync(base + 'districts.json', 'utf8')) as Districts;
-  return { terrain, flood, lakes, features, districts };
+  const overrides = JSON.parse(readFileSync(OVERRIDES_PATH, 'utf8')) as { groundLoot?: FixedLoot[] };
+  return { terrain, flood, lakes, features, districts, fixedLoot: overrides.groundLoot ?? [] };
 }
 
 /** Barrier polylines in features.json (not in the Features type, which lists what the renderer draws). */
@@ -260,15 +292,17 @@ interface Rasters {
   wood: Uint8Array;
 }
 
-const ringArea = (ring: readonly Pt[]): number => {
+/** Shoelace sum over 2: positive for a counter-clockwise ring (x east, y north). */
+const ringSignedArea = (ring: readonly Pt[]): number => {
   let a = 0;
   for (let k = 1; k < ring.length; k++) {
     const p = ring[k - 1] as Pt;
     const q = ring[k] as Pt;
     a += p[0] * q[1] - q[0] * p[1];
   }
-  return Math.abs(a) / 2;
+  return a / 2;
 };
+const ringArea = (ring: readonly Pt[]): number => Math.abs(ringSignedArea(ring));
 
 /** Vertex mean, leaving out the closing repeat. */
 const ringCentre = (ring: readonly Pt[]): Pt => {
@@ -392,6 +426,10 @@ interface Placed {
   rot: number;
   size: number;
   extra?: number;
+  /** Loot this object holds ('' building when it is not in a building). */
+  loot?: { building: string; items: GroundItemRow[] };
+  /** A door: the building and whether it is locked. */
+  door?: { building: string; locked: boolean };
 }
 
 /** Radians clockwise from north for a direction (dx east, dy north). */
@@ -649,7 +687,73 @@ export function buildGroundFiles(w: GroundWorld = loadGroundWorld()): { files: G
     }
   }
 
-  // Into tiles, by final position; wrack is thinned where a tile is over the cap.
+  // Small craters: the district density (PEAK_CRATERS_PER_TILE x pocked) times the curve's small-to-district ratio.
+  const craterRng = rngFor(6);
+  const perDistrictCrater = smallCratersPerDistrictCrater();
+  for (const dt of districts.tiles) {
+    const c = poisson(craterRng, PEAK_CRATERS_PER_TILE * dt.pocked * perDistrictCrater);
+    for (let m = 0; m < c; m++) {
+      const x = (dt.i + craterRng.next()) * TILE_M;
+      const y = (dt.j + craterRng.next()) * TILE_M;
+      const d = craterDiameter(craterRng, GROUND_CRATER_MIN_D, CRATER_MIN_D);
+      const rot = craterRng.float(0, 2 * Math.PI);
+      if (R.band[cellOf(x, y)] === Band.UnderWater || Math.hypot(x - START.x, y - START.y) < START_CLEAR_M + d / 2) continue;
+      placed.push({ kind: 'crater', x, y, rot, size: d });
+    }
+  }
+
+  // Buildings: a door on every standing one, loot by band. Standing: above the mark and not hit by a crater or strike zone.
+  const lootRng = rngFor(7);
+  const doorRng = rngFor(8);
+  const fixed = new Map(w.fixedLoot.map((f) => [f.building, f]));
+  const seenFixed = new Set<string>();
+  for (const b of features.buildings) {
+    const [cx, cy] = ringCentre(b.ring);
+    const band = R.band[cellOf(cx, cy)] as BandCode;
+    const standing = band === Band.Above && !inSpot(zones, cx, cy) && !inSpot(craters, cx, cy);
+    const hand = fixed.get(b.id);
+    if (hand) seenFixed.add(b.id);
+    const area = ringArea(b.ring);
+    // Hand-fixed loot is out in the open whatever the band: the camp is in the scour zone but its armoury is cracked open.
+    let items: GroundItemRow[] = [];
+    if (hand) items = hand.items.map(([id, qty]): GroundItemRow => [id, qty, 0]);
+    else if (!NO_LOOT_TYPES.has(b.type) && area >= 12) {
+      if (standing) items = rollBuildingLoot(lootRng, b.type).map(([id, qty]): GroundItemRow => [id, qty, 0]);
+      // Scour: what the foundations and cellars hold, under the silt. Strandline loot is in the wrack instead.
+      else if (band === Band.Scour) items = rollBuildingLoot(lootRng, b.type, SCOUR_LOOT_SCALE).map(([id, qty]): GroundItemRow => [id, qty, 1]);
+    }
+    if (items.length > 0) {
+      placed.push({ kind: 'spot', x: cx, y: cy, rot: 0, size: Math.min(20, Math.sqrt(area)), loot: { building: b.id, items } });
+    }
+    if (!standing || NO_DOOR_TYPES.has(b.type)) continue;
+    // The door goes mid-way along the longest wall, facing out (the right of the walking direction for a counter-clockwise ring).
+    let best = 0;
+    let at = 1;
+    for (let k = 1; k < b.ring.length; k++) {
+      const len = Math.hypot((b.ring[k] as Pt)[0] - (b.ring[k - 1] as Pt)[0], (b.ring[k] as Pt)[1] - (b.ring[k - 1] as Pt)[1]);
+      if (len > best) {
+        best = len;
+        at = k;
+      }
+    }
+    const [ax, ay] = b.ring[at - 1] as Pt;
+    const [bx, by] = b.ring[at] as Pt;
+    const ccw = ringSignedArea(b.ring) > 0 ? 1 : -1;
+    const lockedRoll = doorRng.next();
+    if (best < 2) continue;
+    placed.push({
+      kind: 'door',
+      x: (ax + bx) / 2,
+      y: (ay + by) / 2,
+      rot: heading(((by - ay) / best) * ccw, (-(bx - ax) / best) * ccw),
+      size: DOOR_W_M,
+      door: { building: b.id, locked: hand ? hand.locked : lockedRoll < (LOCKED_P[b.type] ?? 0.5) },
+    });
+  }
+  for (const f of w.fixedLoot) if (!seenFixed.has(f.building)) throw new Error(`ground: hand-fixed loot in ${f.building}: no such building`);
+
+  // Into tiles, by final position. A tile over the object cap or the file budget is thinned: wrack first, then small
+  // craters, then rolled loot spots; everything else stays.
   const perTile: Placed[][] = Array.from({ length: TILES_PER_SIDE * TILES_PER_SIDE }, () => []);
   for (const p of placed) {
     if (!(p.x >= 0 && p.y >= 0 && p.x < size && p.y < size)) continue;
@@ -658,33 +762,59 @@ export function buildGroundFiles(w: GroundWorld = loadGroundWorld()): { files: G
   }
   const thinRng = rngFor(5);
   let thinned = 0;
-  const counts = { wall: 0, hedgebank: 0, rubble: 0, car: 0, trunk: 0, wrack: 0 } as Record<DebrisKind, number>;
+  const counts = Object.fromEntries(DEBRIS_KINDS.map((k) => [k, 0])) as Record<DebrisKind, number>;
+  const toItems = (rows: GroundItemRow[]): GroundLoot['items'] => rows.map(([itemId, qty, buried]) => ({ itemId, qty, buried: buried === 1 }));
+  /** The tile's file for these placed objects; strandline wrack may carry sealed tins. */
+  const fileFor = (i: number, j: number, list: readonly Placed[]): GroundFile => {
+    const id = tileId(i, j);
+    const wrackRng = rngFor(100 + j * TILES_PER_SIDE + i);
+    const loot: GroundLoot[] = [];
+    const doors: GroundDoor[] = [];
+    const objects = list.map((p, k): GroundObject => {
+      const o: GroundObject = {
+        key: objectKey(id, k),
+        kind: p.kind,
+        x: Math.min((i + 1) * TILE_M, Math.max(i * TILE_M, p.x)),
+        y: Math.min((j + 1) * TILE_M, Math.max(j * TILE_M, p.y)),
+        rot: p.rot,
+        size: p.size,
+      };
+      if (p.extra !== undefined) o.extra = p.extra;
+      if (p.loot) loot.push({ obj: o.key, building: p.loot.building, items: toItems(p.loot.items) });
+      if (p.door) doors.push({ obj: o.key, building: p.door.building, locked: p.door.locked });
+      if (p.kind === 'wrack' && R.band[cellOf(p.x, p.y)] === Band.Strandline) {
+        const items = rollWrackLoot(wrackRng, R.urban[cellOf(p.x, p.y)] as number);
+        if (items.length > 0) loot.push({ obj: o.key, building: '', items: toItems(items) });
+      }
+      return o;
+    });
+    return objects.length === 0 ? emptyGroundFile(id) : encodeGround({ tile: id, i, j, objects, loot, doors });
+  };
   const files: GroundFile[] = [];
   for (let j = 0; j < TILES_PER_SIDE; j++) {
     for (let i = 0; i < TILES_PER_SIDE; i++) {
-      let list = perTile[j * TILES_PER_SIDE + i] as Placed[];
-      const excess = list.length - MAX_OBJECTS_PER_TILE;
-      if (excess > 0) {
-        const wrack = list.map((p, k) => ({ k, key: p.kind === 'wrack' ? thinRng.next() : 2 })).sort((a, b) => a.key - b.key || a.k - b.k);
-        const drop = new Set(wrack.slice(0, excess).filter((d) => d.key < 2).map((d) => d.k));
-        thinned += drop.size;
-        list = list.filter((_, k) => !drop.has(k));
+      const all = perTile[j * TILES_PER_SIDE + i] as Placed[];
+      // Drop order: wrack in random order, then craters, then rolled loot spots; the rest (and hand-fixed spots) stays.
+      const keyOf = (p: Placed): number =>
+        p.kind === 'wrack' ? thinRng.next() : p.kind === 'crater' ? 1 + thinRng.next() : p.kind === 'spot' && !fixed.has(p.loot?.building ?? '') ? 2 + thinRng.next() : 9;
+      const order = all
+        .map((p, k) => ({ k, key: keyOf(p) }))
+        .filter((d) => d.key < 9)
+        .sort((x, y) => x.key - y.key || x.k - y.k);
+      let drop = Math.min(order.length, Math.max(0, all.length - MAX_OBJECTS_PER_TILE));
+      let file: GroundFile;
+      for (;;) {
+        const gone = new Set(order.slice(0, drop).map((d) => d.k));
+        const list = gone.size === 0 ? all : all.filter((_, k) => !gone.has(k));
+        file = fileFor(i, j, list);
+        if (drop >= order.length || Buffer.byteLength(serialiseGround(file)) <= TILE_WARN_BYTES) {
+          thinned = thinned + gone.size;
+          for (const p of list) counts[p.kind]++;
+          break;
+        }
+        drop = Math.min(order.length, drop + Math.ceil(all.length * 0.02));
       }
-      const id = tileId(i, j);
-      const objects = list.map((p, k): GroundObject => {
-        counts[p.kind]++;
-        const o: GroundObject = {
-          key: objectKey(id, k),
-          kind: p.kind,
-          x: Math.min((i + 1) * TILE_M, Math.max(i * TILE_M, p.x)),
-          y: Math.min((j + 1) * TILE_M, Math.max(j * TILE_M, p.y)),
-          rot: p.rot,
-          size: p.size,
-        };
-        if (p.extra !== undefined) o.extra = p.extra;
-        return o;
-      });
-      files.push(objects.length === 0 ? emptyGroundFile(id) : encodeGround({ tile: id, i, j, objects, loot: [], doors: [] }));
+      files.push(file);
     }
   }
   return { files, stats: { counts, thinned } };
@@ -724,7 +854,7 @@ export const groundStep: Step = {
     const objects = files.reduce((a, f) => a + f.o.length, 0);
     const most = Math.max(...files.map((f) => f.o.length));
     console.log(
-      `[worldgen] ground: ${files.length} tiles, ${objects} objects (${JSON.stringify(stats.counts)}, ${stats.thinned} wrack thinned, ` +
+      `[worldgen] ground: ${files.length} tiles, ${objects} objects (${JSON.stringify(stats.counts)}, ${stats.thinned} wrack or craters thinned, ` +
         `most in a tile ${most}), ${(total / 1024).toFixed(1)} KB`,
     );
   },

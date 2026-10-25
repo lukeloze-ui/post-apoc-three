@@ -9,9 +9,10 @@ export const GROUND_VERSION = 1;
 /**
  * Debris kinds the worldgen ground step writes (spec SX 02, debris near towns and roads). Size is metres: a pile's
  * width, a car's length (centred on x, y), a trunk's length (root at x, y, crown along rot), a barrier segment's
- * length (centred on x, y, along rot).
+ * length (centred on x, y, along rot), a small crater's diameter, a door's width (on the wall, rot pointing out), and
+ * a spot's width (a building's loot spot, centred on the building).
  */
-export const DEBRIS_KINDS = ['wall', 'hedgebank', 'rubble', 'car', 'trunk', 'wrack'] as const;
+export const DEBRIS_KINDS = ['wall', 'hedgebank', 'rubble', 'car', 'trunk', 'wrack', 'crater', 'door', 'spot'] as const;
 export type DebrisKind = (typeof DEBRIS_KINDS)[number];
 /** Barrier segments (wall, hedgebank) carry extra: 0 standing, 1 broken. */
 export const BARRIER_STANDING = 0;

@@ -30,6 +30,17 @@ export function craterDiameter(rng: Rng, dMin = CRATER_MIN_D, dMax = CRATER_MAX_
   return (a - rng.next() * (a - b)) ** (-1 / CRATER_SLOPE);
 }
 
+/** Craters of CRATER_MIN_D and up per tile at the storm centre; thins with strikeDensity. */
+export const PEAK_CRATERS_PER_TILE = 30;
+/** Ground detail holds craters from here up to CRATER_MIN_D, metres across. */
+export const GROUND_CRATER_MIN_D = 5;
+
+/** Small ground craters (GROUND_CRATER_MIN_D up to CRATER_MIN_D) expected per district crater (CRATER_MIN_D up to CRATER_MAX_D). */
+export function smallCratersPerDistrictCrater(): number {
+  const large = craterCumulative(CRATER_MIN_D, GROUND_CRATER_MIN_D, CRATER_MAX_D);
+  return (1 - large) / large;
+}
+
 /** Strike density at the storm centre relative to its far-field floor, and how far the worst of it reaches, metres. */
 export const STRIKE_FLOOR = 0.05;
 export const STRIKE_REACH_M = 3500;
