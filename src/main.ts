@@ -23,13 +23,14 @@ import { fetchLakes } from './world/lakes';
 import { createOverheadView } from './ui/debug/overheadView';
 import { registerDistrictLayers } from './ui/debug/districtLayers';
 import { registerGroundLayer } from './ui/debug/groundLayers';
-import { GroundCache } from './world/ground';
+import { GroundCache, type GroundTile } from './world/ground';
+import { findTarget, perform, promptText, type Target } from './sim/groundInteract';
 import { GroundStreaming, tilesAround } from './world/groundStreaming';
 import { tileOf } from './world/terrain';
 import { fetchDistricts } from './world/districts';
 import { osgbToLocal } from './world/geo';
 import { createStatsReadout } from './ui/debug/stats';
-import { clockLabel, createHud } from './ui/hud';
+import { clockLabel, createHud, createInteractHud } from './ui/hud';
 import { createPlayerHud } from './ui/playerHud';
 import { WalkKeys } from './ui/keys';
 import { createPlayer } from './sim/player';
@@ -116,6 +117,8 @@ async function main(): Promise<void> {
   const groundDetail = new GroundDetail(surface);
   gs.scene.add(groundDetail.group);
   const groundFailed = new Set<string>();
+  /** The loaded tiles as they are in the files; the player's changes are in groundDeltas. */
+  const baseTiles = new Map<string, GroundTile>();
   let groundBusy = false;
   const tileKey = (x: number, y: number): string => {
     const t = tileOf(x, y);
@@ -143,6 +146,7 @@ async function main(): Promise<void> {
       // The small craters go in first, so the debris sits on the carved ground; then the near chunks rebuild.
       for (const tile of fetched) {
         if (!tile) continue;
+        baseTiles.set(tile.tile, tile);
         const loaded = applyDeltas(tile, groundDeltas);
         const spots = loaded.objects.filter((o) => o.kind === 'crater').map((o) => ({ x: o.x, y: o.y, r: o.size / 2 }));
         const changed = tileCraters.setTile(loaded.tile, spots);
@@ -153,6 +157,7 @@ async function main(): Promise<void> {
       for (const id of groundDetail.loaded) {
         if (keep.has(id)) continue;
         groundDetail.unloadTile(id);
+        baseTiles.delete(id);
         const changed = tileCraters.removeTile(id);
         if (changed) chunks.invalidate(changed);
       }
@@ -169,6 +174,22 @@ async function main(): Promise<void> {
   const keys = new WalkKeys();
   const bob = new HeadBob();
   const playerHud = params.fly ? null : createPlayerHud();
+  // E searches, digs or forces what the player is looking at; the changes go into groundDeltas, then the tile is redrawn.
+  const interactHud = createInteractHud();
+  let target: Target | undefined;
+  let pressedE = false;
+  window.addEventListener('keydown', (ev) => {
+    if (ev.code === 'KeyE' && !ev.repeat) pressedE = true;
+  });
+  const interact = (): void => {
+    if (!target || player.resting) return;
+    const done = perform(target, groundDeltas, player.party, player.walk);
+    clock.advance(done.minutes * 60);
+    interactHud.showResult(done.lines, performance.now());
+    const base = baseTiles.get(target.tile.tile);
+    if (base) groundDetail.setTile(applyDeltas(base, groundDeltas));
+    save.markDirty();
+  };
   // World frame: x east, z = -north, y up.
   gs.camera.position.set(start.x, player.z + EYE_HEIGHT_M, -start.y);
   // The dev fly camera replaces walking with ?fly=1.
@@ -249,6 +270,7 @@ async function main(): Promise<void> {
   gs.run(
     (dt) => {
       if (paperMap.visible) {
+        pressedE = false;
         look.apply(gs.camera);
         return;
       }
@@ -267,6 +289,11 @@ async function main(): Promise<void> {
         }
         gs.camera.position.set(player.x, player.z + EYE_HEIGHT_M + bob.update(dt, player.movedMs), -player.y);
         playerHud?.update(player);
+        if (pressedE) interact();
+        pressedE = false;
+        target = findTarget([...baseTiles.values()], groundDeltas, player.party, player.x, player.y, look.yaw);
+        interactHud.setPrompt(target ? promptText(target) : '');
+        interactHud.tick(performance.now());
       }
       updateSky();
       look.apply(gs.camera);
