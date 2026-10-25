@@ -26,7 +26,7 @@ import { registerGroundLayer } from './ui/debug/groundLayers';
 import { GroundCache, type GroundTile } from './world/ground';
 import { findTarget, perform, promptText, type Target } from './sim/groundInteract';
 import { GroundStreaming, tilesAround } from './world/groundStreaming';
-import { tileOf } from './world/terrain';
+import { tileId, tileOf } from './world/terrain';
 import { fetchDistricts } from './world/districts';
 import { osgbToLocal } from './world/geo';
 import { createStatsReadout } from './ui/debug/stats';
@@ -41,7 +41,8 @@ import { EYE_HEIGHT_M, HeadBob } from './render/headBob';
 import { createPaperMap } from './ui/paperMap/paperMap';
 import { prepareMapData } from './ui/paperMap/mapData';
 import { Marks, type Leg } from './ui/paperMap/marks';
-import { applyDeltas, emptyGroundDeltas, registerGroundSection } from './save/groundDeltas';
+import { createPackScreen } from './ui/packScreen';
+import { addToGround, applyDeltas, emptyGroundDeltas, registerGroundSection } from './save/groundDeltas';
 import { SaveGame, parseClockSave, parsePlayerSave, registerCoreSections } from './save/save';
 
 declare global {
@@ -239,6 +240,22 @@ async function main(): Promise<void> {
   });
   if (params.view === 'map') paperMap.setVisible(true);
 
+  // The pack screen (Tab) pauses walking and the clock like the map. A dropped item becomes an added object
+  // in the player's ground tile, kind `drop:<itemId>` with the quantity in `extra`, so it can be picked up later.
+  const packScreen = createPackScreen({
+    party: player.party,
+    onDrop: (itemId, qty) => {
+      const t = tileOf(player.x, player.y);
+      const id = tileId(t.i, t.j);
+      addToGround(groundDeltas, id, { kind: `drop:${itemId}`, x: player.x, y: player.y, rot: 0, size: 0.5, extra: qty });
+      const base = baseTiles.get(id);
+      if (base) groundDetail.setTile(applyDeltas(base, groundDeltas));
+      save.markDirty();
+    },
+    onChange: () => save.markDirty(),
+  });
+  if (params.view === 'pack') packScreen.setVisible(true);
+
   // The dev fly camera does not move the player, so it keeps its own hands off the saved position.
   if (!fly) {
     registerCoreSections(save, {
@@ -269,7 +286,7 @@ async function main(): Promise<void> {
 
   gs.run(
     (dt) => {
-      if (paperMap.visible) {
+      if (paperMap.visible || packScreen.visible) {
         pressedE = false;
         look.apply(gs.camera);
         return;

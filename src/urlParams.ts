@@ -1,7 +1,7 @@
 /** Debug URL params shared by every task. Pure parsing; no DOM access. */
 import { parseGameTime } from './sim/time';
 
-export type ViewMode = 'fp' | 'debug' | 'map';
+export type ViewMode = 'fp' | 'debug' | 'map' | 'pack';
 
 export interface UrlParams {
   /** OSGB easting, metres. */
@@ -35,7 +35,7 @@ export function parseUrlParams(search: string): UrlParams {
   const q = new URLSearchParams(search);
   const view = q.get('view');
   const out: UrlParams = {
-    view: view === 'debug' || view === 'map' ? view : 'fp',
+    view: view === 'debug' || view === 'map' || view === 'pack' ? view : 'fp',
     fly: q.get('fly') === '1',
     fresh: q.get('fresh') === '1',
     stats: q.get('stats') === '1',
