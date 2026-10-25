@@ -1,6 +1,7 @@
 {
   "version": 1,
-  "source": "SYNTHETIC STAND-IN - replace with OS Terrain 50",
+  "source": "OS Terrain 50 (2026-05-29)",
+  "attribution": "Contains OS data (c) Crown copyright and database right 2026",
   "crs": "EPSG:27700",
   "originE": 252000,
   "originN": 88000,
