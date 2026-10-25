@@ -5,6 +5,17 @@ import { ITEMS } from '../sim/items';
 import { TILES_PER_SIDE, TILE_M, tileId } from './terrain';
 
 export const GROUND_VERSION = 1;
+
+/**
+ * Debris kinds the worldgen ground step writes (spec SX 02, debris near towns and roads). Size is metres: a pile's
+ * width, a car's length (centred on x, y), a trunk's length (root at x, y, crown along rot), a barrier segment's
+ * length (centred on x, y, along rot).
+ */
+export const DEBRIS_KINDS = ['wall', 'hedgebank', 'rubble', 'car', 'trunk', 'wrack'] as const;
+export type DebrisKind = (typeof DEBRIS_KINDS)[number];
+/** Barrier segments (wall, hedgebank) carry extra: 0 standing, 1 broken. */
+export const BARRIER_STANDING = 0;
+export const BARRIER_BROKEN = 1;
 /** Coordinates and sizes are stored in decimetres. */
 const DM = 10;
 const TILE_DM = TILE_M * DM;

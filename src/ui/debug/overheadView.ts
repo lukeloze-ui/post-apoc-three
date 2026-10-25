@@ -245,6 +245,8 @@ export interface OverheadView {
   setVisible(v: boolean): void;
   toggle(): void;
   redraw(): void;
+  /** Centres the view on local (x, y), optionally at a zoom in pixels per metre. */
+  lookAt(x: number, y: number, scale?: number): void;
 }
 
 const MIN_SCALE = 0.02;
@@ -407,6 +409,12 @@ export function createOverheadView(
       self.setVisible(!visible);
     },
     redraw,
+    lookAt(x, y, s) {
+      cx = x;
+      cy = y;
+      if (s !== undefined) scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
+      redraw();
+    },
   };
   return self;
 }

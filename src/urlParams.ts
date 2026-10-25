@@ -21,6 +21,8 @@ export interface UrlParams {
   fresh: boolean;
   /** Dev stats readout: fps, draw calls, triangles. */
   stats: boolean;
+  /** Debug view zoom, pixels per metre (with view=debug, e and n). */
+  zoom?: number;
 }
 
 function num(v: string | null): number | undefined {
@@ -48,5 +50,7 @@ export function parseUrlParams(search: string): UrlParams {
   if (yaw !== undefined) out.yaw = yaw;
   if (pitch !== undefined) out.pitch = pitch;
   if (t !== undefined) out.t = t;
+  const zoom = num(q.get('zoom'));
+  if (zoom !== undefined && zoom > 0) out.zoom = zoom;
   return out;
 }

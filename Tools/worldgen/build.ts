@@ -8,7 +8,8 @@ import { floodStep } from './steps/flood';
 import { groundStep } from './steps/ground';
 import { overridesStep } from './steps/overrides';
 
-// overridesStep stays last: hand fixes (Tools/worldgen/overrides.json) win over every generated step.
-export const steps: Step[] = [floodStep, fillStep, districtsStep, cratersStep, groundStep, overridesStep];
+// overridesStep follows every damage step: hand fixes (Tools/worldgen/overrides.json) win over them. groundStep comes
+// after it, so ground debris is placed from the fixed districts.
+export const steps: Step[] = [floodStep, fillStep, districtsStep, cratersStep, overridesStep, groundStep];
 
 await runSteps('worldgen', steps);

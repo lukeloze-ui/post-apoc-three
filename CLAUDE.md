@@ -47,7 +47,7 @@ Parsed by `src/urlParams.ts`:
 - `e`, `n`: OSGB metres (easting, northing).
 - `yaw`, `pitch`: degrees. Yaw 0 is north, clockwise.
 - `t`: game time, e.g. `d1-07:00`.
-- `view`: `fp`, `debug` or `map`. `view=debug` opens the overhead debug view (`src/ui/debug/overheadView.ts`), a dev tool available only when `import.meta.env.DEV` is true or with `?view=debug`. **F2** toggles it. Wheel zooms, drag pans; layers register with `registerDebugLayer`.
+- `view`: `fp`, `debug` or `map`. `view=debug` opens the overhead debug view (`src/ui/debug/overheadView.ts`), a dev tool available only when `import.meta.env.DEV` is true or with `?view=debug`. **F2** toggles it. Wheel zooms, drag pans; layers register with `registerDebugLayer`. With `e` and `n` it opens centred there at `zoom` pixels per metre (default 1); the ground debris layer (`groundLayers.ts`) draws from 0.4 px/m in.
 - `view=map` opens the paper map (`src/ui/paperMap/`), toggled in play with **M** (Esc closes). It draws only pre-disaster terrain heights and `features.json`, never flood, bands, lakes, districts or ground (`paperMap.test.ts` checks imports), and never marks the player's position. **While the map is open the player cannot walk and the clock is paused** (a design choice: reading the map costs no game time). The `setMarksLayer` slot on the map is for the pencil layer.
 - `fly=1`: dev fly camera.
 - `fresh=1`: ignore the save.

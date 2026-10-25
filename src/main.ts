@@ -21,6 +21,9 @@ import { fetchFlood } from './world/flood';
 import { fetchLakes } from './world/lakes';
 import { createOverheadView } from './ui/debug/overheadView';
 import { registerDistrictLayers } from './ui/debug/districtLayers';
+import { registerGroundLayer } from './ui/debug/groundLayers';
+import { GroundCache } from './world/ground';
+import { tilesAround } from './world/groundStreaming';
 import { fetchDistricts } from './world/districts';
 import { osgbToLocal } from './world/geo';
 import { createStatsReadout } from './ui/debug/stats';
@@ -115,6 +118,7 @@ async function main(): Promise<void> {
   // Dev tool: only in dev builds or with ?view=debug. The hidden district damage is shown only here.
   const wantDebug = import.meta.env.DEV || params.view === 'debug';
   if (wantDebug) registerDistrictLayers(districts);
+  const groundLayer = wantDebug ? registerGroundLayer(new GroundCache()) : null;
   const debugView = wantDebug
     ? createOverheadView({ terrain, flood, lakes, gameDay: clock.gameDays }, () => ({
         x: gs.camera.position.x,
@@ -123,7 +127,14 @@ async function main(): Promise<void> {
       }))
     : null;
   if (debugView) {
-    if (params.view === 'debug') debugView.setVisible(true);
+    if (params.view === 'debug') {
+      debugView.setVisible(true);
+      // Opened on a place: centre there and load its ground debris before the first frame (for screenshots).
+      if (params.e !== undefined && params.n !== undefined) {
+        debugView.lookAt(start.x, start.y, params.zoom ?? 1);
+        await groundLayer?.load(tilesAround(start.x, start.y));
+      }
+    }
     window.addEventListener('keydown', (ev) => {
       if (ev.key !== 'F2') return;
       ev.preventDefault();
