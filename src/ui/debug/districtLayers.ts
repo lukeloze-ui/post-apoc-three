@@ -1,5 +1,5 @@
 // Debug layers for the hidden district damage (districts.json): bridges, road segments, craters, strike zones, fires,
-// gas hollows and animal counts. Hovering a record shows it in the overhead view's readout.
+// gas hollows, animal counts, wrack dams, landslips, silt flats with soft patches and fallen woods. Hovering a record shows it in the overhead view's readout.
 import {
   ANIMAL_KINDS,
   BIRD_KINDS,
@@ -8,6 +8,8 @@ import {
   type RoadSegment,
   type Spot,
 } from '../../world/districts';
+import type { Features, Pt } from '../../world/features';
+import { ringContains } from '../../world/districts';
 import { TILE_M } from '../../world/terrain';
 import { registerDebugLayer, type DebugViewport } from './overheadView';
 
@@ -18,7 +20,7 @@ const HOVER_PX = 6;
 function describe(kind: string, rec: object): string {
   const parts: string[] = [];
   for (const [k, v] of Object.entries(rec)) {
-    if (k === 'pts' || k === 'cells') continue;
+    if (k === 'pts' || k === 'cells' || k === 'ring') continue;
     parts.push(`${k}=${typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}`);
   }
   return `${kind}: ${parts.join(' ')}`;
@@ -66,11 +68,16 @@ const walkingCount = (t: DistrictTile): number =>
 const animalCount = (t: DistrictTile): number => ANIMAL_KINDS.reduce((n, k) => n + (t.animals[k] ?? 0), 0);
 
 /** Registers every district layer. Call once, after the overhead view's base layers. */
-export function registerDistrictLayers(d: Districts): void {
+export function registerDistrictLayers(d: Districts, features?: Features): void {
   const craters = d.tiles.flatMap((t) => t.craters);
   const zones = d.tiles.flatMap((t) => t.strikeZones);
   const fires = d.tiles.flatMap((t) => t.fires);
   const gas = d.tiles.flatMap((t) => t.gasHollows);
+  const dams = d.tiles.flatMap((t) => t.wrackDams);
+  const slips = d.tiles.flatMap((t) => t.landslips);
+  const flats = d.tiles.flatMap((t) => t.siltFlats);
+  const fallen = d.tiles.flatMap((t) => t.fallenWood);
+  const woodById = new Map((features?.woods ?? []).map((w) => [w.id, w]));
   const survivorOf = new Map<string, string>();
   for (const s of d.survivors) for (const id of s.bridgeIds) survivorOf.set(id, s.name);
   const maxAnimals = Math.max(1, ...d.tiles.map(animalCount));
@@ -125,6 +132,128 @@ export function registerDistrictLayers(d: Districts): void {
       const cy = Math.floor(y / cell);
       const g = gas.find((h) => h.cells.some(([i, j]) => i === cx && j === cy));
       return g && describe('gas hollow', { ...g, cellCount: g.cells.length });
+    },
+  });
+
+  const tracePath = (ctx: CanvasRenderingContext2D, view: DebugViewport, ring: readonly Pt[]): void => {
+    ring.forEach(([x, y], k) => {
+      const p = view.toPx(x, y);
+      if (k === 0) ctx.moveTo(p.px, p.py);
+      else ctx.lineTo(p.px, p.py);
+    });
+  };
+
+  registerDebugLayer({
+    id: 'd-fallen-wood',
+    label: 'Fallen woodland (dark red; the wood outline)',
+    defaultOn: true,
+    draw(ctx, view) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(120,40,20,0.35)';
+      ctx.strokeStyle = 'rgba(200,90,50,0.8)';
+      ctx.lineWidth = 1;
+      const drawn = new Set<string>();
+      for (const f of fallen) {
+        const wood = woodById.get(f.woodId);
+        if (!wood || drawn.has(f.woodId)) continue;
+        drawn.add(f.woodId);
+        ctx.beginPath();
+        tracePath(ctx, view, wood.ring);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+    hover(_view, x, y) {
+      const hit = fallen.find((f) => {
+        const wood = woodById.get(f.woodId);
+        return wood !== undefined && ringContains(wood.ring, x, y);
+      });
+      return hit && describe('fallen wood', hit);
+    },
+  });
+
+  registerDebugLayer({
+    id: 'd-silt',
+    label: 'Silt flats (brown) and soft patches (dark)',
+    defaultOn: true,
+    draw(ctx, view) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(170,120,60,0.5)';
+      ctx.strokeStyle = 'rgba(120,80,30,0.9)';
+      ctx.lineWidth = 1;
+      for (const f of flats) {
+        ctx.beginPath();
+        tracePath(ctx, view, f.ring);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(60,35,15,0.9)';
+      for (const f of flats) {
+        for (const p of f.softPatches) {
+          circle(ctx, view, p.x, p.y, drawR(view, p, 1.5));
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    },
+    hover(view, x, y) {
+      const patch = flats.flatMap((f) => f.softPatches).find((p) => Math.hypot(x - p.x, y - p.y) * view.scale <= Math.max(1.5, p.r * view.scale) + HOVER_PX / 2);
+      if (patch) return describe('soft patch', patch);
+      const f = flats.find((s) => ringContains(s.ring, x, y));
+      return f && describe('silt flat', { ...f, patches: f.softPatches.length });
+    },
+  });
+
+  registerDebugLayer({
+    id: 'd-landslips',
+    label: 'Landslips (orange)',
+    defaultOn: true,
+    draw(ctx, view) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,150,0,0.55)';
+      ctx.strokeStyle = '#ff9600';
+      ctx.lineWidth = 1.5;
+      for (const s of slips) {
+        ctx.beginPath();
+        tracePath(ctx, view, s.ring);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+    hover(_view, x, y) {
+      const s = slips.find((l) => ringContains(l.ring, x, y));
+      return s && describe('landslip', s);
+    },
+  });
+
+  registerDebugLayer({
+    id: 'd-wrack',
+    label: 'Wrack dams (magenta; ring = bridge, square = narrows)',
+    defaultOn: true,
+    draw(ctx, view) {
+      ctx.save();
+      ctx.lineWidth = 2;
+      ctx.fillStyle = 'rgba(255,60,200,0.45)';
+      ctx.strokeStyle = '#ff3cc8';
+      for (const w of dams) {
+        if (w.kind === 'bridge') {
+          circle(ctx, view, w.x, w.y, drawR(view, w, 4));
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          const { px, py } = view.toPx(w.x, w.y);
+          const h = drawR(view, w, 4);
+          ctx.fillRect(px - h, py - h, 2 * h, 2 * h);
+          ctx.strokeRect(px - h, py - h, 2 * h, 2 * h);
+        }
+      }
+      ctx.restore();
+    },
+    hover(view, x, y) {
+      const w = spotAt(view, dams, x, y, 4);
+      return w && describe('wrack dam', w);
     },
   });
 

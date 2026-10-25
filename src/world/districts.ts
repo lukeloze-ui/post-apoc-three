@@ -2,7 +2,7 @@
 // public/world/districts.json, loaded by the game but never shown to the player directly.
 // Local frame as in terrain.ts: x metres east, y metres north from the patch's SW corner.
 import type { BandCode } from './flood';
-import type { Features } from './features';
+import type { Features, Pt } from './features';
 import { TILES_PER_SIDE, TILE_M, tileId } from './terrain';
 
 export const DISTRICTS_VERSION = 1;
@@ -137,21 +137,41 @@ export interface GasHollow extends Spot {
   cells: [number, number][];
 }
 
+/** Landslips sit only on slopes steeper than this, degrees. */
+export const LANDSLIP_MIN_SLOPE_DEG = 25;
+
+/** Wrack piled across a bridge or where the valley floor narrows sharply; only below the mark. */
 export interface WrackDam extends Spot {
+  kind: 'bridge' | 'narrows';
+  /** The bridge it lies against, or null at a narrows. */
   bridgeId: string | null;
 }
 
-export type Landslip = Spot;
-
-export interface SiltPatch extends Spot {
-  /** Soft patches can trap you. */
-  soft: boolean;
+/** A scar on a steep valley side. x, y, r hold the ring; slopeDeg is the mean slope of its cells. */
+export interface Landslip extends Spot {
+  /** Closed: the first point is repeated at the end. All inside the tile. */
+  ring: Pt[];
+  slopeDeg: number;
 }
 
+/** A soft patch of mud that can trap you. Lies inside its silt flat. */
+export type SoftPatch = Spot;
+
+/** Low gentle ground below the mark, slow and tiring. x, y, r hold the ring. */
+export interface SiltFlat extends Spot {
+  /** Closed: the first point is repeated at the end. All inside the tile. */
+  ring: Pt[];
+  softPatches: SoftPatch[];
+}
+
+/** A woods feature brought down, by the wave below the mark or by a big strike zone. */
 export interface FallenWood {
   id: string;
-  /** The woods feature it lies in. */
+  /** The woods feature. */
   woodId: string;
+  cause: 'mark' | 'strike';
+  /** Fraction of the wood's area that lies in this tile. */
+  share: number;
 }
 
 export type AnimalKind = 'rabbit' | 'pony' | 'roeDeer' | 'redDeer' | 'sheep' | 'pheasant' | 'pigeon' | 'gull' | 'crow';
@@ -185,8 +205,8 @@ export interface DistrictTile {
   pocked: number;
   wrackDams: WrackDam[];
   landslips: Landslip[];
-  silt: SiltPatch[];
-  fallenWoods: FallenWood[];
+  siltFlats: SiltFlat[];
+  fallenWood: FallenWood[];
 }
 
 export interface Districts {
@@ -200,12 +220,32 @@ export interface Districts {
   tiles: DistrictTile[];
 }
 
-const SPOT_LISTS = ['craters', 'strikeZones', 'fires', 'gasHollows', 'wrackDams', 'landslips', 'silt'] as const;
+const SPOT_LISTS = ['craters', 'strikeZones', 'fires', 'gasHollows', 'wrackDams', 'landslips', 'siltFlats'] as const;
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isPt = (v: unknown): v is [number, number] => Array.isArray(v) && v.length === 2 && isNum(v[0]) && isNum(v[1]);
+
+/** True if (x, y) is inside the ring (even-odd rule). */
+export function ringContains(ring: readonly Pt[], x: number, y: number): boolean {
+  let inside = false;
+  for (let k = 0, m = ring.length - 1; k < ring.length; m = k++) {
+    const [xi, yi] = ring[k] as Pt;
+    const [xj, yj] = ring[m] as Pt;
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** A closed ring of at least four points, all inside tile (i, j). */
+function ringInTile(ring: unknown, i: number, j: number): boolean {
+  if (!Array.isArray(ring) || ring.length < 4 || !ring.every(isPt)) return false;
+  const first = ring[0] as Pt;
+  const last = ring[ring.length - 1] as Pt;
+  if (first[0] !== last[0] || first[1] !== last[1]) return false;
+  return (ring as Pt[]).every(([x, y]) => x >= i * TILE_M && x <= (i + 1) * TILE_M && y >= j * TILE_M && y <= (j + 1) * TILE_M);
+}
 
 /**
  * Checks parsed districts.json. Returns a list of errors (empty when valid).
@@ -336,13 +376,40 @@ export function validateDistricts(d: unknown, features?: Features): string[] {
           if (list === 'gasHollows' && (!Array.isArray(s.cells) || s.cells.length === 0 || !s.cells.every(isPt))) {
             errs.push(`${sp}.cells: need a list of [column, row]`);
           }
+          if (list === 'wrackDams') {
+            if (s.kind !== 'bridge' && s.kind !== 'narrows') errs.push(`${sp}.kind: bad`);
+            if (s.bridgeId !== null && !isStr(s.bridgeId)) errs.push(`${sp}.bridgeId: not a string or null`);
+            else if (isStr(s.bridgeId) && !bridgeIds.has(s.bridgeId)) errs.push(`${sp}.bridgeId: no bridge ${s.bridgeId}`);
+            if ((s.kind === 'bridge') !== (s.bridgeId !== null)) errs.push(`${sp}: bridgeId only on a bridge dam`);
+          }
+          if (list === 'landslips') {
+            if (!ringInTile(s.ring, i, j)) errs.push(`${sp}.ring: need a closed ring inside the tile`);
+            if (!isNum(s.slopeDeg) || s.slopeDeg <= LANDSLIP_MIN_SLOPE_DEG) {
+              errs.push(`${sp}.slopeDeg: not over ${LANDSLIP_MIN_SLOPE_DEG}`);
+            }
+          }
+          if (list === 'siltFlats') {
+            if (!ringInTile(s.ring, i, j)) errs.push(`${sp}.ring: need a closed ring inside the tile`);
+            else if (!Array.isArray(s.softPatches)) errs.push(`${sp}.softPatches: not an array`);
+            else {
+              s.softPatches.forEach((p: unknown, m: number) => {
+                if (!isObj(p) || !isStr(p.id) || !isNum(p.x) || !isNum(p.y) || !isNum(p.r) || p.r <= 0) {
+                  return void errs.push(`${sp}.softPatches[${m}]: bad spot`);
+                }
+                if (!ringContains(s.ring as Pt[], p.x, p.y)) errs.push(`${sp}.softPatches[${m}]: outside the silt flat`);
+              });
+            }
+          }
         });
       }
-      if (!Array.isArray(t.fallenWoods)) errs.push(`${at}.fallenWoods: not an array`);
+      if (!Array.isArray(t.fallenWood)) errs.push(`${at}.fallenWood: not an array`);
       else {
-        t.fallenWoods.forEach((w: unknown, n) => {
-          if (!isObj(w) || !isStr(w.id) || !isStr(w.woodId)) errs.push(`${at}.fallenWoods[${n}]: bad`);
-          else if (features && !woods.has(w.woodId)) errs.push(`${at}.fallenWoods[${n}]: no wood ${w.woodId}`);
+        t.fallenWood.forEach((w: unknown, n) => {
+          const wp = `${at}.fallenWood[${n}]`;
+          if (!isObj(w) || !isStr(w.id) || !isStr(w.woodId)) return void errs.push(`${wp}: bad`);
+          if (w.cause !== 'mark' && w.cause !== 'strike') errs.push(`${wp}.cause: bad`);
+          if (!isNum(w.share) || w.share <= 0 || w.share > 1) errs.push(`${wp}.share: not in 0..1`);
+          if (features && !woods.has(w.woodId)) errs.push(`${wp}: no wood ${w.woodId}`);
         });
       }
       if (!isObj(t.animals)) errs.push(`${at}.animals: not an object`);

@@ -468,8 +468,8 @@ export const districtsStep: Step = {
       pocked: 0,
       wrackDams: [],
       landslips: [],
-      silt: [],
-      fallenWoods: [],
+      siltFlats: [],
+      fallenWood: [],
     }));
     tiles.sort((a, b) => a.j - b.j || a.i - b.i);
 

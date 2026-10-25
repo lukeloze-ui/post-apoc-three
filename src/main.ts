@@ -198,7 +198,7 @@ async function main(): Promise<void> {
 
   // Dev tool: only in dev builds or with ?view=debug. The hidden district damage is shown only here.
   const wantDebug = import.meta.env.DEV || params.view === 'debug';
-  if (wantDebug) registerDistrictLayers(districts);
+  if (wantDebug) registerDistrictLayers(districts, features);
   const groundLayer = wantDebug ? registerGroundLayer(groundCache) : null;
   const debugView = wantDebug
     ? createOverheadView({ terrain, flood, lakes, gameDay: clock.gameDays }, () => ({

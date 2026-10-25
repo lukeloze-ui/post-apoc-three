@@ -1,12 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { slopeDegAt } from '../../Tools/worldgen/steps/blockers';
 import { splitRoad } from '../../Tools/worldgen/steps/districts';
-import { MAX_SEGMENT_M, validateDistricts, type Districts } from './districts';
+import { LANDSLIP_MIN_SLOPE_DEG, MAX_SEGMENT_M, ringContains, validateDistricts, type Districts } from './districts';
 import type { Features, Pt } from './features';
-import { TILE_M, tileBounds } from './terrain';
+import { hwAt, parseFlood, type FloodMeta } from './flood';
+import { TILE_M, heightAt, parseTerrain, tileBounds, type TerrainMeta } from './terrain';
 
 const districts = JSON.parse(readFileSync('public/world/districts.json', 'utf8')) as Districts;
 const features = JSON.parse(readFileSync('public/world/features.json', 'utf8')) as Features;
+const tmeta = JSON.parse(readFileSync('public/world/terrain.json', 'utf8')) as TerrainMeta;
+const terrain = parseTerrain(tmeta, readFileSync('public/world/terrain.bin'), readFileSync('public/world/landcover.bin'));
+const fmeta = JSON.parse(readFileSync('public/world/flood.json', 'utf8')) as FloodMeta;
+const flood = parseFlood(fmeta, readFileSync('public/world/bands.bin'), terrain);
 
 describe('districts.json', () => {
   it('validates against features.json', () => {
@@ -47,7 +53,77 @@ describe('districts.json', () => {
   });
 });
 
+describe('terrain blockers', () => {
+  const tiles = districts.tiles;
+  type Tile = Districts['tiles'][number];
+  const all = <K extends 'wrackDams' | 'landslips' | 'siltFlats' | 'fallenWood'>(k: K): Tile[K] =>
+    tiles.flatMap((t) => t[k] as unknown[]) as Tile[K];
+
+  it('has some of each', () => {
+    expect(all('wrackDams').some((w) => w.kind === 'bridge')).toBe(true);
+    expect(all('wrackDams').some((w) => w.kind === 'narrows')).toBe(true);
+    expect(all('landslips').length).toBeGreaterThan(0);
+    expect(all('siltFlats').length).toBeGreaterThan(0);
+    expect(all('siltFlats').some((f) => f.softPatches.length > 0)).toBe(true);
+    expect(all('fallenWood').length).toBeGreaterThan(0);
+  });
+
+  it('puts wrack dams only below the mark', () => {
+    for (const w of all('wrackDams')) {
+      expect(heightAt(terrain, w.x, w.y), w.id).toBeLessThan(hwAt(flood.hw, w.x, w.y));
+    }
+  });
+
+  it('puts landslips only on slopes over 25 degrees', () => {
+    const cellM = tmeta.cellM;
+    for (const l of all('landslips')) {
+      let n = 0;
+      for (let cy = Math.floor(l.y / cellM) - 25; cy <= Math.floor(l.y / cellM) + 25; cy++) {
+        for (let cx = Math.floor(l.x / cellM) - 25; cx <= Math.floor(l.x / cellM) + 25; cx++) {
+          const x = (cx + 0.5) * cellM;
+          const y = (cy + 0.5) * cellM;
+          if (!ringContains(l.ring, x, y)) continue;
+          n++;
+          expect(slopeDegAt(terrain, x, y), l.id).toBeGreaterThan(LANDSLIP_MIN_SLOPE_DEG);
+        }
+      }
+      expect(n, l.id).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps soft patches, circle and all, inside their silt flat', () => {
+    for (const f of all('siltFlats')) {
+      for (const p of f.softPatches) {
+        for (let a = 0; a < 8; a++) {
+          const x = p.x + p.r * Math.cos((a * Math.PI) / 4);
+          const y = p.y + p.r * Math.sin((a * Math.PI) / 4);
+          expect(ringContains(f.ring, x, y), p.id).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('refers to real woods', () => {
+    const woods = new Map(features.woods.map((w) => [w.id, w]));
+    for (const f of all('fallenWood')) expect(woods.has(f.woodId), f.id).toBe(true);
+  });
+});
+
 describe('validateDistricts', () => {
+  it('rejects a soft patch outside its silt flat and a gentle landslip', () => {
+    const broken = structuredClone(districts);
+    const flatTile = broken.tiles.find((t) => t.siltFlats.length > 0);
+    const slipTile = broken.tiles.find((t) => t.landslips.length > 0);
+    const flat = flatTile?.siltFlats[0];
+    const slip = slipTile?.landslips[0];
+    if (!flat || !slip) throw new Error('no silt flat or landslip to break');
+    flat.softPatches.push({ id: 'bad', x: flat.x + 1e5, y: flat.y, r: 5 });
+    slip.slopeDeg = 20;
+    const errs = validateDistricts(broken, features);
+    expect(errs.some((e) => e.includes('outside the silt flat'))).toBe(true);
+    expect(errs.some((e) => e.includes('slopeDeg'))).toBe(true);
+  });
+
   it('reports a bad reference and a missing tile', () => {
     const broken = structuredClone(districts);
     (broken.bridges[0] as { refId: string }).refId = 'nope';
