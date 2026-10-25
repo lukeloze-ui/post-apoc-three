@@ -50,6 +50,21 @@ export interface BridgeFeature {
   major: boolean;
 }
 
+export interface WoodFeature {
+  id: string;
+  /** Closed: the first point is repeated at the end. */
+  ring: Pt[];
+}
+
+export type BuildingType = 'house' | 'farm' | 'shop' | 'church' | 'industrial' | 'military' | 'school' | 'pub' | 'other';
+
+export interface BuildingFeature {
+  id: string;
+  type: BuildingType;
+  /** Closed: the first point is repeated at the end. */
+  ring: Pt[];
+}
+
 /** The parts of features.json that the world renderer draws. */
 export interface Features {
   roads: RoadFeature[];
@@ -57,6 +72,8 @@ export interface Features {
   rivers: RiverFeature[];
   water: WaterFeature[];
   bridges: BridgeFeature[];
+  woods: WoodFeature[];
+  buildings: BuildingFeature[];
 }
 
 /** Fetches features.json (browser). */

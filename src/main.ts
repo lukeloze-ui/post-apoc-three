@@ -7,6 +7,7 @@ import { buildTerrainApron } from './render/terrainApron';
 import { createBandColorFn } from './render/terrainColor';
 import { buildLakeWater } from './render/lakeWater';
 import { Linework } from './render/linework';
+import { WoodsAndBuildings } from './render/woodsAndBuildings';
 import { fetchFeatures } from './world/features';
 import { currentGameDay } from './sim/clock';
 import { fetchTerrain, START } from './world/terrain';
@@ -44,7 +45,15 @@ async function main(): Promise<void> {
   const chunks = new TerrainChunks(surface, { colorFn });
   chunks.buildAll(start.x, start.y);
   const linework = new Linework(surface, features, flood);
-  gs.scene.add(chunks.group, buildTerrainApron(surface, colorFn), buildLakeWater(lakes, currentGameDay()), linework.group);
+  const woodsAndBuildings = new WoodsAndBuildings(surface, features, flood);
+  woodsAndBuildings.buildAll(start.x, start.y);
+  gs.scene.add(
+    chunks.group,
+    buildTerrainApron(surface, colorFn),
+    buildLakeWater(lakes, currentGameDay()),
+    linework.group,
+    woodsAndBuildings.group,
+  );
   const look = new Look(gs.renderer.domElement, params.yaw ?? START.yaw, params.pitch ?? 0);
   // World frame: x east, z = -north, y up.
   gs.camera.position.set(start.x, surfaceHeight(surface, start.x, start.y) + EYE_HEIGHT, -start.y);
@@ -76,7 +85,7 @@ async function main(): Promise<void> {
       }))
     : null;
 
-  window.__game = { params, terrain, surface, chunks, linework, look, ...gs };
+  window.__game = { params, terrain, surface, chunks, linework, woodsAndBuildings, look, ...gs };
 
   gs.run(
     (dt) => {
@@ -84,6 +93,7 @@ async function main(): Promise<void> {
       look.apply(gs.camera);
       chunks.update(gs.camera.position.x, -gs.camera.position.z);
       linework.update(gs.camera.position.x, -gs.camera.position.z);
+      woodsAndBuildings.update(gs.camera.position.x, -gs.camera.position.z);
       stats?.update(dt);
       if (debugView?.visible) debugView.redraw();
     },
