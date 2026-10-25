@@ -4,11 +4,14 @@ import { Look } from './render/look';
 import { FlyCamera } from './render/fly';
 import { TerrainChunks } from './render/terrainChunks';
 import { buildTerrainApron } from './render/terrainApron';
+import { createBandColorFn } from './render/terrainColor';
+import { buildLakeWater } from './render/lakeWater';
+import { currentGameDay } from './sim/clock';
 import { fetchTerrain, START } from './world/terrain';
 import { createSurface, surfaceHeight } from './world/surface';
 import { fetchFlood } from './world/flood';
 import { fetchLakes } from './world/lakes';
-import { DEFAULT_GAME_DAY, createOverheadView } from './ui/debug/overheadView';
+import { createOverheadView } from './ui/debug/overheadView';
 import { osgbToLocal } from './world/geo';
 import { createStatsReadout } from './ui/debug/stats';
 
@@ -31,9 +34,10 @@ async function main(): Promise<void> {
 
   const start =
     params.e !== undefined && params.n !== undefined ? osgbToLocal(params.e, params.n) : { x: START.x, y: START.y };
-  const chunks = new TerrainChunks(surface);
+  const colorFn = createBandColorFn(terrain, flood);
+  const chunks = new TerrainChunks(surface, { colorFn });
   chunks.buildAll(start.x, start.y);
-  gs.scene.add(chunks.group, buildTerrainApron(surface));
+  gs.scene.add(chunks.group, buildTerrainApron(surface, colorFn), buildLakeWater(lakes, currentGameDay()));
   const look = new Look(gs.renderer.domElement, params.yaw ?? START.yaw, params.pitch ?? 0);
   // World frame: x east, z = -north, y up.
   gs.camera.position.set(start.x, surfaceHeight(surface, start.x, start.y) + EYE_HEIGHT, -start.y);
@@ -42,7 +46,7 @@ async function main(): Promise<void> {
   // Dev tool: only in dev builds or with ?view=debug.
   const debugView =
     import.meta.env.DEV || params.view === 'debug'
-      ? createOverheadView({ terrain, flood, lakes, gameDay: DEFAULT_GAME_DAY }, () => ({
+      ? createOverheadView({ terrain, flood, lakes, gameDay: currentGameDay() }, () => ({
           x: gs.camera.position.x,
           y: -gs.camera.position.z,
           yaw: look.yaw,
