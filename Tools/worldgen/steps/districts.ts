@@ -1,5 +1,6 @@
 // District level: bridges, road segments and the 1 km tile records (see src/world/districts.ts).
-// For now every bridge stands and nothing is blocked; later steps fill in the damage. No RNG yet.
+// Bridges fall and road segments are blocked by the probability rules in ../rules/damage.ts, rolled once here with
+// this step's own RNG. The tile lists are still empty; later steps fill them in.
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
   DISTRICTS_VERSION,
@@ -16,9 +17,12 @@ import { osgbToLocal } from '../../../src/world/geo';
 import { isUnderWater, parseLakes, type LakesMeta } from '../../../src/world/lakes';
 import { TILES_PER_SIDE, TILE_M, heightAt, parseTerrain, tileId, tileOf, type TerrainMeta } from '../../../src/world/terrain';
 import { STORM, SURVIVORS } from '../decisions';
+import { mulberry32 } from '../rng';
+import { WOOD_NEAR_M, bridgeFalls, bridgeReason, rollRoadBlock, stormBump, type WoodClass } from '../rules/damage';
 import type { Step } from '../steps';
 
 const dir = 'public/world/';
+const SEED = 0xd15a57e2;
 
 /** A deck sits at least this far above the ground beneath it, metres. */
 export const DECK_CLEARANCE_M = 2;
@@ -96,7 +100,22 @@ function inRing(ring: readonly Pt[], x: number, y: number): boolean {
   return inside;
 }
 
-const onTileEdge = (p: Pt): boolean =>
+/** Distance from (x, y) to the nearest edge of ring, metres. */
+function distToRing(ring: readonly Pt[], x: number, y: number): number {
+  let best = Infinity;
+  for (let k = 1; k < ring.length; k++) {
+    const [ax, ay] = ring[k - 1] as Pt;
+    const [bx, by] = ring[k] as Pt;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 === 0 ? 0 : Math.min(1, Math.max(0, ((x - ax) * dx + (y - ay) * dy) / len2));
+    best = Math.min(best, Math.hypot(ax + t * dx - x, ay + t * dy - y));
+  }
+  return best;
+}
+
+const onTileEdge =(p: Pt): boolean =>
   p.some((v) => v > 0 && v < TILES_PER_SIDE * TILE_M && v % TILE_M === 0);
 
 /** Splits one road at tile edges and junction vertices, then into equal pieces of at most MAX_SEGMENT_M. */
@@ -300,6 +319,16 @@ export const districtsStep: Step = {
     }
     bridges.push(...derived);
 
+    // Bridge state: one roll per bridge in list order, survivors forced standing (the roll is still drawn).
+    const rng = mulberry32(SEED);
+    const centre = osgbToLocal(STORM.e, STORM.n);
+    for (const b of bridges) {
+      const fell = bridgeFalls(rng, b.depthBelowMark, stormBump(Math.hypot(b.x - centre.x, b.y - centre.y)));
+      if (survivorIds.has(b.id)) continue;
+      b.standing = !fell;
+      b.reason = bridgeReason(fell, b.depthBelowMark);
+    }
+
     // Junctions: a vertex shared by two or more roads (OSM ways share nodes; coordinates are rounded identically).
     // Simplification can drop the shared node from the through road, so a road end within JUNCTION_SNAP_M of another
     // road is also a junction: on that road's nearest vertex, or inserted into it.
@@ -378,7 +407,18 @@ export const districtsStep: Step = {
     const bandAtPt = (x: number, y: number): BandCode =>
       isUnderWater(lakes, terrain, x, y, 0) ? Band.UnderWater : bandAt(flood, tmeta.cellM, cellsPerSide, x, y);
 
+    const nearWoodAt = (x: number, y: number): boolean =>
+      woods.some(
+        (w) =>
+          x >= w.x0 - WOOD_NEAR_M &&
+          x <= w.x1 + WOOD_NEAR_M &&
+          y >= w.y0 - WOOD_NEAR_M &&
+          y <= w.y1 + WOOD_NEAR_M &&
+          (inRing(w.ring, x, y) || distToRing(w.ring, x, y) <= WOOD_NEAR_M),
+      );
+
     const roadSegments: RoadSegment[] = [];
+    const woodClasses: WoodClass[] = [];
     const segmentRoad = (road: RoadFeature): void => {
       splitRoad(roadPts.get(road.id) ?? road.pts, isJunction).forEach((pts, n) => {
         const L = polyLength(pts);
@@ -386,12 +426,15 @@ export const districtsStep: Step = {
         const t = tileOf(mid[0], mid[1]);
         const samples = Math.max(1, Math.ceil(L / SAMPLE_M));
         let wooded = 0;
+        let beside = false;
         let band: BandCode = Band.Above;
         for (let k = 0; k < samples; k++) {
           const [x, y] = pointAlong(pts, ((k + 0.5) * L) / samples);
           if (inWoodAt(x, y)) wooded++;
+          else if (!beside && nearWoodAt(x, y)) beside = true;
           band = Math.max(band, bandAtPt(x, y)) as BandCode;
         }
+        woodClasses.push(wooded * 2 >= samples ? 'in' : wooded > 0 || beside ? 'beside' : 'none');
         roadSegments.push({
           id: `${road.id}-${n}`,
           roadId: road.id,
@@ -406,6 +449,11 @@ export const districtsStep: Step = {
       });
     };
     features.roads.forEach(segmentRoad);
+    roadSegments.forEach((s, k) => {
+      const roll = rollRoadBlock(rng, s.band, woodClasses[k] as WoodClass);
+      s.blocked = roll.blocked;
+      s.cause = roll.cause;
+    });
 
     const tiles: DistrictTile[] = fmeta.tiles.map((ft) => ({
       id: ft.id,
@@ -425,7 +473,6 @@ export const districtsStep: Step = {
     }));
     tiles.sort((a, b) => a.j - b.j || a.i - b.i);
 
-    const centre = osgbToLocal(STORM.e, STORM.n);
     const districts: Districts = {
       version: DISTRICTS_VERSION,
       method:
@@ -435,7 +482,10 @@ export const districtsStep: Step = {
         `Road segments: each road split at tile edges and at vertices shared with another road, then into equal pieces of at most ` +
         `${MAX_SEGMENT_M} m. inWood = at least half the ${SAMPLE_M} m samples inside a woods polygon; band = deepest band sampled ` +
         '(3 under a trapped lake at spill). Storm and survivors are hand-picked in Tools/worldgen/decisions.ts. ' +
-        'No damage yet: every bridge stands, nothing is blocked, tile lists are empty.',
+        'Damage: each bridge falls with a logistic probability in depth below the mark (about 0.1 above, 0.9 at 40 m below, ' +
+        '0.95 deeper, plus a small bump near the storm centre); survivors stand. Each road segment is blocked with a probability ' +
+        `by band and woods (within ${WOOD_NEAR_M} m of a wood counts as beside it): see Tools/worldgen/rules/damage.ts. ` +
+        'Rolled once with a fixed seed. Tile lists are empty.',
       storm: { worstSide: STORM.worstSide, centre: { e: STORM.e, n: STORM.n, x: r1(centre.x), y: r1(centre.y) }, why: STORM.why },
       survivors: SURVIVORS.map((s) => ({ name: s.name, bridgeIds: [...s.bridgeIds], why: s.why })),
       bridges,
