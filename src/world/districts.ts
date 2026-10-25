@@ -209,11 +209,30 @@ export interface DistrictTile {
   fallenWood: FallenWood[];
 }
 
+/** A fallen bridge reopened by the route check so a way through exists (SX 02 'Always leave a way through'). */
+export interface RouteReopen {
+  bridgeId: string;
+  reason: string;
+}
+
+/** Outcome of the route check (Tools/worldgen/steps/routeCheck.ts, src/world/route.ts), recorded in the header. */
+export interface RouteCheckRecord {
+  method: string;
+  /** Patch edges the route must reach. */
+  goal: string[];
+  /** Cells and metres of the route found from START. */
+  cells: number;
+  lengthM: number;
+  reopened: RouteReopen[];
+}
+
 export interface Districts {
   version: number;
   method: string;
   storm: StormDecision;
   survivors: SurvivorDecision[];
+  /** Absent until the route check has run. */
+  routeCheck?: RouteCheckRecord;
   bridges: DistrictBridge[];
   roadSegments: RoadSegment[];
   /** 100 tiles, row-major (j * 10 + i). */
@@ -310,6 +329,19 @@ export function validateDistricts(d: unknown, features?: Features): string[] {
       }
       for (const id of s.bridgeIds) if (!bridgeIds.has(id as string)) errs.push(`survivors[${k}]: no bridge ${String(id)}`);
     });
+  }
+
+  if (d.routeCheck !== undefined) {
+    const rc = d.routeCheck;
+    if (!isObj(rc) || !isStr(rc.method) || !Array.isArray(rc.goal) || !isNum(rc.cells) || !isNum(rc.lengthM)) {
+      errs.push('routeCheck: bad');
+    } else if (!Array.isArray(rc.reopened)) errs.push('routeCheck.reopened: not an array');
+    else {
+      rc.reopened.forEach((r: unknown, k) => {
+        if (!isObj(r) || !isStr(r.bridgeId) || !isStr(r.reason)) return void errs.push(`routeCheck.reopened[${k}]: bad`);
+        if (!bridgeIds.has(r.bridgeId)) errs.push(`routeCheck.reopened[${k}]: no bridge ${r.bridgeId}`);
+      });
+    }
   }
 
   const tileIds = new Set<string>();

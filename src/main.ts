@@ -24,6 +24,7 @@ import { fetchLakes } from './world/lakes';
 import { createOverheadView } from './ui/debug/overheadView';
 import { registerDistrictLayers } from './ui/debug/districtLayers';
 import { registerGroundLayer } from './ui/debug/groundLayers';
+import { registerRouteLayers } from './ui/debug/routeLayer';
 import { GroundCache, type GroundTile } from './world/ground';
 import { findTarget, perform, promptText, type Target } from './sim/groundInteract';
 import { GroundStreaming, tilesAround } from './world/groundStreaming';
@@ -220,7 +221,10 @@ async function main(): Promise<void> {
 
   // Dev tool: only in dev builds or with ?view=debug. The hidden district damage is shown only here.
   const wantDebug = import.meta.env.DEV || params.view === 'debug';
-  if (wantDebug) registerDistrictLayers(districts, features);
+  if (wantDebug) {
+    registerDistrictLayers(districts, features);
+    registerRouteLayers(districts, features);
+  }
   const groundLayer = wantDebug ? registerGroundLayer(groundCache) : null;
   const debugView = wantDebug
     ? createOverheadView({ terrain, flood, lakes, gameDay: clock.gameDays }, () => ({
