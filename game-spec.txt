@@ -7,7 +7,7 @@ SX 01The concept, tightened
 
 The working title says what the game is about. The flood leaves a line across the land, and everything about where you go and what you find depends on which side of that line you are on. Above it, the world is cratered and empty but standing. Below it, everything has been scoured flat, but the debris is full of tinned food. The game is about crossing that line again and again.
 
-Core loop: plan a leg on the paper map, walk it, find out what the map didn't know, then scavenge, hunt and rest, and plan the next leg. Each play keeps the real hills and rivers but changes the damage, the flood height and the people and animals you meet.
+Core loop: plan a leg on the paper map, walk it, find out what the map didn't know, then scavenge, hunt and rest, and plan the next leg. The hills and rivers are real; the damage, the flood height and the animals you find are laid over them as one fixed world, the same every play.
 
 Tone: quiet, lonely, practical. Think more of a long-distance walk than a shooter. Death and gore stay in the background, never in close-up (see the presentation section near the end).
 
@@ -25,7 +25,7 @@ Story beats
     Day 0, 23:00
     Meteor storm. Small stones (about golf-ball size) fall everywhere and are lethal; a few strikes are metres across. You shelter under the steel target. In the game the target is completely safe; everywhere else is not. The storm is the one scripted set piece.
     Day 1, 03:00
-    The gas. Make it heavier than air, so it pools in valleys and towns and spreads thinly over high ground. That explains why people on high moorland are the rare survivors. You pass out and wake at dawn with a headache and dead skylarks on the grass.
+    The gas. Make it heavier than air, so it pools in valleys and towns and spreads thinly over high ground. That explains why only the high moor is survivable. You pass out and wake at dawn with a headache and dead skylarks on the grass.
     Day 1, 07:00
     The sea arrives in a series of crests over about eight hours. You watch from the target; the player can only look around. Control returns when the last crest falls back.
     Days 2 to 4
@@ -35,9 +35,9 @@ Story beats
     Finale
     Crossing the reflooded Levels by raft and wading, moving between the higher ground at the Poldens, Glastonbury and Wedmore. Then the climb onto Mendip, the wrecked village of Priddy, and the cellar door.
 
-SX 02Map: real ground, random damage
+SX 02Map: real ground, fixed damage
 
-The rule that makes this work: never randomise the terrain itself. The hills, valleys, rivers, roads and towns are real, so a player's own knowledge of Devon and Somerset counts. What changes each play is everything laid over the top.
+The rule that makes this work: never randomise the terrain itself. The hills, valleys, rivers, roads and towns are real, so a player's own knowledge of Devon and Somerset counts. The damage laid over the top is generated once, offline, by a world build script, checked by eye, and shipped as fixed data. There is no world seed and no per-play variation for now.
 The landscapes on the way
 
 The journey should cross several kinds of country, each with its own pace, food and danger. The height of the mark in each area decides most of that.
@@ -54,17 +54,17 @@ Debris near towns and roads. Below the mark, place trees, cars and detritus by d
 Three levels of detail
 Level	Scale	Made when	Contents
 Region	50 m grid	Before play (built from real data)	Elevation, rivers, roads, rail, woodland, settlements. This is what the paper map shows.
-District	1 km tiles	At game start, from the seed, but kept hidden	Local flood height, large craters, which bridges stand, which roads are blocked, fires, gas hollows, how many animals and people.
-Ground	2 to 5 m cells	Only when you arrive, or when you look at it through the scope	Rubble, fallen trees, small craters, wrack piles, loot in each building, individual animals.
+District	1 km tiles	Before play, by the world build script, shipped as data but kept hiddenLocal flood height, large craters, which bridges stand, which roads are blocked, fires, gas hollows, how many animals.
+Ground	2 to 5 m cells	Before play, by the world build script; loaded only when you arrive, or when you look at it through the scopeRubble, fallen trees, small craters, wrack piles, loot in each building, individual animals.
 
-Each 1 km tile gets its own number from the world seed plus its grid reference. The game builds the ground detail from that number when you enter, so it comes out the same every time you return. Save only what the player changed (items taken, doors forced, carcasses), not the whole tile. Free data covers the base layer: OS Terrain 50 for height, and OS OpenMap Local or OpenStreetMap for roads, buildings and woods, which also tell you what kind of building each one is.
+Each 1 km tile's ground detail is stored as a compact list of objects in its own file, loaded when you enter, so it is the same every time you return. Save only what the player changed (items taken, doors forced, carcasses), not the whole tile. Free data covers the base layer: OS Terrain 50 for height, and OS OpenMap Local or OpenStreetMap for roads, buildings and woods, which also tell you what kind of building each one is.
 Damage blocks
 
 Give each blocker a cost and a way past it, so it becomes a choice rather than a wall.
 Blocker	Where it appears	Ways past
 Pocked ground (small strikes)	Everywhere, thinning with distance from the storm's centre	Slows walking by about 10%; trips you in the dark
-Craters, 5 to 50 m	Scattered at random; many small, few large	Go round. Large ones have a ring of thrown-out rock and sometimes standing water.
-Strike zone, 100 m and up	Rare, 2 to 5 per play	Burning or glassy ground; a big detour. Visible from tors as smoke.
+Craters, 5 to 50 m	Scattered widely; many small, few large	Go round. Large ones have a ring of thrown-out rock and sometimes standing water.
+Strike zone, 100 m and up	Rare, 2 to 5 in the 10 km patch	Burning or glassy ground; a big detour. Visible from tors as smoke.
 Wrack dam	Bridges and valley narrows below the mark	Climb across (slow, risk of injury), or go upstream to a crossing
 Bridge out	Most bridges below the mark, a few above it	Ford, swim (loses gear you haven't sealed), or detour
 Landslip	Steep valley sides such as the Teign gorge and Lydford	Climb over or route along the ridge
@@ -72,12 +72,12 @@ Fallen woodland	Woods, both below the mark and in big strike zones	Very slow; op
 Silt and mud flats	Low ground after the water drains	Slow and tiring; can trap you in soft patches
 Gas hollow	Valley floors, days 1 to 5 only	Warning signs are dead birds and no insects. Stay out until wind clears it.
 Standing water	Basins, river levels and the Levels	Wade, raft, or walk round
-How much randomness
+How the damage is laid out
 
     Place it by how likely it is, not evenly. A bridge 40 m below the mark should fall about 9 times in 10, and one above it about 1 time in 10. A road through a wood below the mark is nearly always blocked; an open moor road above it nearly never is. Players learn these patterns and plan with them, which is the skill you want.
     Size craters on a steep curve. For each crater of 50 m there should be about 10 of 15 m and about 100 of 5 m. That's how real strikes are spread, and it feels right.
-    Vary each play within limits. Each play should move the high-water mark by up to about 40 m, choose which side of the moor took the worst of the storm, and pick which two or three major bridges survived. That's enough for routes to change between plays without anyone having to relearn the country.
-    Always leave a way through. After generating, check that a walkable route exists from start to finish, and reopen one blocked crossing if it doesn't.
+    Decide the big things once. The world build script fixes the high-water mark, which side of the moor took the worst of the storm, and which two or three major bridges survived. They are the same every play, so they can be checked and tuned by hand.
+    Always leave a way through. After generating, and before the data is shipped, check that a walkable route exists from start to finish, and reopen one blocked crossing if it doesn't.
 
 SX 03Flooding and how it falls
 Camp c.470 m Yes Tor 619 m High-water mark, c.430 m falling to c.280 m Okehampton Crediton Tiverton Taunton Poldens Glastonbury Tor Priddy c.260 m Levels stay flooded 0 km c.120 km
@@ -90,14 +90,14 @@ Draining	Days 2 to 5	Slopes clear first. Valleys run as brown torrents and every
 Trapped water	Weeks	Closed hollows and old quarries hold salt lakes until they evaporate or seep away. Make it a slow fall of a few centimetres a day.
 The Levels	Whole game	Without pumps, sluices or sea walls, the Levels go back to a shallow inland sea. Glastonbury is the Isle of Avalon again, and the Polden ridge and Burtle become islands.
 
-How to compute it: store one high-water value per 1 km tile, as a smooth slope from south-west to north-east plus gentle random variation. Every cell at or below that value is in the scoured zone. For trapped water, run a standard "fill the hollows" pass over the height grid once at world creation. It tells you how deep each hollow holds water before it spills, and you then lower that level slowly over time.
+How to compute it: store one high-water value per 1 km tile, as a smooth slope from south-west to north-east plus gentle variation, computed once by the world build script. Every cell at or below that value is in the scoured zone. For trapped water, run a standard "fill the hollows" pass over the height grid once at world creation. It tells you how deep each hollow holds water before it spills, and you then lower that level slowly over time.
 Bands below the line
 
 The band each place falls in tells the generator what to put there, and players can read the bands by eye.
 Above the mark
 
     Buildings stand, though many have holed roofs
-    Animals and the few survivors are here
+    Animals are here
     Fresh water from streams is safe after filtering
     Little food, because there are few houses
 
@@ -119,7 +119,7 @@ Still under water
     You need a raft, boat or causeway
     Floating wrack can be harvested
 
-This changes the "stay near towns" plan in a useful way. Almost every town between Okehampton and Taunton is below the mark, so towns become debris fields to dig through rather than shops to raid. The few places above the line, such as Princetown, the moor-edge villages and hill farms, become valuable and are where you meet other people. Priddy sits in the strandline band, which is why it is wrecked but still recognisable.
+This changes the "stay near towns" plan in a useful way. Almost every town between Okehampton and Taunton is below the mark, so towns become debris fields to dig through rather than shops to raid. The few places above the line, such as Princetown, the moor-edge villages and hill farms, become valuable: standing houses with food still in them. Priddy sits in the strandline band, which is why it is wrecked but still recognisable.
 SX 04The paper map and the scope
 
 At the start the player gets a pre-disaster map: OS style, with contours, roads and towns. It shows nothing of the damage. The player draws the route with a pencil tool, adds notes and crosses things out. The game never draws on it for you.
@@ -132,7 +132,7 @@ At the start the player gets a pre-disaster map: OS style, with contours, roads 
 Likely routes, for testing
 Route	Approx.	Character
 Direct: Okehampton, Crediton, Tiverton, Taunton	120 to 140 km	Shortest and flattest, but almost all scour zone. Lots of loot in the wrecked towns, rivers to cross (Taw, Yeo, Exe, Culm, Tone), and no game to hunt.
-High: north to Exmoor, then the Brendons and Quantocks	160 to 190 km	Longer and hillier but mostly above the mark at the north end. Red deer on Exmoor, and survivors. The crossing of mid-Devon is hard.
+High: north to Exmoor, then the Brendons and Quantocks	160 to 190 km	Longer and hillier but mostly above the mark at the north end. Red deer on Exmoor. The crossing of mid-Devon is hard.
 East: Haldon, the Blackdown Hills, then down to the Levels	150 to 170 km	A middle route. You have to cross the Exe estuary area, which is a real choke point.
 
 All three finish by crossing water on the Levels, so a raft or boat should be part of the final act.
@@ -164,24 +164,24 @@ Two guns, two jobs
 
     Rabbits, pheasants, ducks, pigeons and other small birds
     Range of about 30 to 40 m; it needs a head shot, so stalking matters
-    Nearly silent: no warning to animals or people
+    Nearly silent: no warning to animals
     Thousands of pellets, so ammunition is never the limit; time and skill are
 
 Service rifle
 
-    Deer, and protection from people
+    Deer
     Limited rounds, so every shot is a decision
     Loud enough to be heard for kilometres
     Heavy, so carrying it costs you food you could carry instead
 
 This split gives the player a steady small income from the air rifle and occasional big wins, at a cost, from the real one. Weight makes the choice. A player might leave the service rifle behind on a safe stretch, or hide a cache of rounds to come back for.
 
-    What's left: rabbits on higher ground above the mark, plus pheasants and pigeons. Deer survive only in some places: roe in the valley woods at the moor's edge, and red deer on Exmoor and the Quantocks. Farm animals such as sheep, cattle and pigs survive but are very rare, and so are Dartmoor ponies. Each play moves the deer around a little, so you have to look for signs of them. Nothing lives in the scour zone at first.
+    What's left: rabbits on higher ground above the mark, plus pheasants and pigeons. Deer survive only in some places: roe in the valley woods at the moor's edge, and red deer on Exmoor and the Quantocks. Farm animals such as sheep, cattle and pigs survive but are very rare, and so are Dartmoor ponies. The deer keep to a few fixed spots, and you have to look for signs of them. Nothing lives in the scour zone at first.
     Animals move downhill over time. Within a few days, grass starts sprouting on the scoured slopes. It comes back first on the higher ground and on slopes where rain washes the salt out, and later on the low, salty flats. Hungry animals follow it down. Each game day, move the animals in a tile a little towards neighbouring tiles that have more new grass. Birds are moving from day 1, because they have to find food and can fly over the damage. Expect gulls and crows on the strandline, pigeons and pheasants above the mark, and ducks on any new water. Rabbits and deer spread down into the valleys over the following weeks. In the early game food is up high, and later it spreads out, so a slow journey finds more to hunt on the low ground.
     Small game is the everyday treat. A rabbit, a pheasant or a duck is one meal for two, roasted whole over a fire with nothing wasted. The air rifle makes it cheap, and it should feel like the best part of the day. Ducks are on the flood pools, the reservoirs and the Levels.
-    Large animals are scarce and must not be wasted. Deer and the rare farm animals are limited in each play, rifle rounds are limited, and stalking takes real effort. Killing one before you can deal with it is a bad move. Hunting stays a choice, and you can get through on tins, fish and small game.
+    Large animals are scarce and must not be wasted. Deer and the rare farm animals are limited, rifle rounds are limited, and stalking takes real effort. Killing one before you can deal with it is a bad move. Hunting stays a choice, and you can get through on tins, fish and small game.
     A longer game later. Grass returning and animals moving down point towards a later "after the reunion" mode: settling at Priddy, gathering the surviving livestock, and living through the first winter. That mode is set out in the last section.
-    The rifle is noisy. One shot can be heard several kilometres away. In normal mode that scares off the other animals nearby. In hard mode it also tells people where you are. That is why the air rifle matters, and snares are a second quiet option.
+    The rifle is noisy. One shot can be heard several kilometres away. That scares off the other animals nearby. That is why the air rifle matters, and snares are a second quiet option.
     Fresh meat goes off fast in July, within one to two days without cooling. That's what makes the choice matter.
 
 Fishing
@@ -204,40 +204,19 @@ A roe deer gives about 8 to 12 kg of meat; a red deer gives 40 kg or more. The g
     Use the rest: bones for stock, fat for cooking, the hide for a groundsheet or raft lashings, and scraps for the dogs.
 
 Score each kill on how much was used. Early versions can just show the figure. Later versions can make waste cost something: animals grow warier nearby, the child's morale drops, and fewer large animals are left on the map.
-SX 07Dogs, companions and party
+SX 07Dogs and party
 Dogs (up to two)
 
 Staffies that outlived their owners. You win them over by feeding them and sitting quietly over a few encounters.
 
-    Help: warn of people or animals at night, flush pheasants and rabbits, track a wounded deer, and raise morale.
+    Help: warn of animals at night, flush pheasants and rabbits, track a wounded deer, and raise morale.
     Cost: a 20 kg dog needs about 1,000 kcal a day. It can carry a dog pack of a few kilos at most.
     Suggestion: dogs can be injured and need rest or carrying, but don't let them die unless an option is switched on. Players will quit over a dead dog.
 
-People you meet (later option)
+The parent-child pair can be set at the start: father or mother, son or daughter, and the child's age (8, 12 or 16). Age changes how much the child can carry, how fast they walk, and whether they're allowed to use the rifle.
+SX 08No other people
 
-Draw two or three from a pool each play, so every run feels different.
-Helpers
-
-    An agricultural student: butchery, snares, livestock
-    A trainee nurse: better first aid and infection care
-    A sailor or rower from the coast: rafts and boats for the Levels
-    A cadet: watch-keeping and rifle care
-
-Dependants (cannot die)
-
-    Children, or someone with an injury
-    The party walks at their speed and they carry little
-    They need food and make noise at times
-    They raise morale and give the story its weight
-
-The parent-child pair can be set at the start: father or mother, son or daughter, and the child's age (8, 12 or 16). Age changes how much the child can carry, how fast they walk, whether they can take a watch, and whether they're allowed to use the rifle.
-SX 08Hard mode: people who fight
-
-In normal mode, other survivors are rare and easy to spot, and mostly they want to trade or be left alone. Hard mode switches on hostile groups who will try to take your food.
-
-    Keeping watch: someone has to be awake all night. A single pair splitting the night each gets four or five hours of sleep. Lack of sleep builds up and makes you slower, less accurate and quicker to make mistakes. A dog on watch lets both people sleep with some risk; an adult companion makes a proper rota.
-    No open fires. They show from far off at night, and smoke shows by day. You can still use the gas stove under cover. A hidden pit fire, a dug hole that hides the flame, can be learnt as a skill, so smoking meat is still possible but slower and riskier.
-    Avoid fights first. Hostile groups give warning signs (watching from ridges, smoke, footprints). Retreating, hiding, trading, or showing the rifle should usually work. Shooting is a last resort that has consequences: noise, other people's anger, and the child's state of mind.
+For now the player meets no other people: no survivors, companions, trading or hostile groups, and no hard mode. The parent, the child and up to two dogs are alone until Priddy. Bodies and empty roads show what happened to everyone else.
 
 SX 09Showing the dead
 
@@ -252,7 +231,7 @@ SX 10What to build first
 
     A 10 km by 10 km patch of real Dartmoor height data around Okehampton with the high-water mark applied, viewed from above.
     Walking with a load model and Naismith-based time, with the paper map and pencil.
-    Generating 1 km tiles on arrival from the seed, with craters, wrack and blocked bridges.
+    A fixed world built once offline: 1 km district tiles and their ground detail, with craters, wrack and blocked bridges, loaded on arrival.
     The scope from a tor revealing tiles in line of sight.
-    Food and water, then hunting with the air rifle, fishing and the service rifle, then dogs. Companions and hard mode come after the core feels good.
+    Food and water, then hunting with the air rifle, fishing and the service rifle, then dogs.
 

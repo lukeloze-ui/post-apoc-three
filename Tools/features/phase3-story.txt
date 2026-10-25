@@ -1,0 +1,39 @@
+# High Water Mark - phase 3: story, party options and presentation
+# Plan this AFTER phase 2 is built and committed:
+#   .\claude-batch.ps1 -Features Tools\features\phase3-story.txt -PlanOnly
+# The full design is in game-spec.txt at the repo root; each feature names the spec section to read.
+
+1. New game setup (spec SX 07). Choose father or mother, son or daughter, and the child's age (8, 12 or 16).
+   Age sets the child's body weight and so their carry limit, their walking speed,
+   and whether they are allowed to use the rifle. The world itself is fixed, so there is
+   no seed to enter.
+
+2. Prologue walk (spec SX 01, Day 0 18:00). A walk across the north moor on the Ivybridge to Okehampton crossing that
+   teaches movement, the paper map and the pack, ending at the old target railway below Rowtor to look at the
+   armoured target trolley before pitching camp.
+
+3. The meteor storm set piece (spec SX 01, Day 0 23:00). The one scripted sequence. Golf-ball-sized stones fall
+   everywhere and are lethal; a few strikes are metres across. The steel target is completely safe and everywhere
+   else is not, so the player must shelter under it. Leaves the craters and strike zones the generator placed.
+
+4. The gas and the surge (spec SX 01, Day 1 03:00 and 07:00). The gas is heavier than air: the player passes out
+   and wakes at dawn with a headache and dead skylarks on the grass. Then the sea arrives as three to six crests
+   over about eight hours, each a little lower, watched from the target: the player can only look around while it
+   fills the West Okement valley and laps at Yes Tor and High Willhays, which become a ridge-island, peaking only
+   30 to 50 m below the camp. Control returns when the last crest falls back.
+
+5. No one is coming (spec SX 01). A wind-up or car radio picks up only static, and perhaps a looping automatic
+   signal that dies after a few days. No helicopters, broadcasts or relief camps anywhere.
+
+6. Finale: Cheddar Gorge, Priddy and the cellar (spec SX 01, SX 02). The last climb up Cheddar Gorge, stripped to
+   bare limestone with rockfalls and the road gone, then the wrecked village of Priddy (stone walls at odd angles,
+   roofs gone, wrack across the fields) and the stone cellar door behind the house where the other parent survived.
+   Ending screen with journey stats (days, distance, kills and how much was used).
+
+7. Waste has a cost (spec SX 06). Building on the kill-use score: wasting a large animal makes animals warier
+   nearby, drops the child's morale, and leaves fewer large animals on the map.
+
+8. Showing the dead and the loss (spec SX 09). Bodies only as pale, soft shapes in the distance or under sheets,
+   tarps and wrack; the camera never focuses on them. Dead animals in drifts at the strandline as simple shapes in
+   the same grey as the mud. Show the scale of loss through what's missing: empty roads, no sound, a church tower
+   standing in the water.

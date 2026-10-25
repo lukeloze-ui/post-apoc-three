@@ -1,0 +1,105 @@
+# High Water Mark - phase 1: the core (spec section SX 10, "What to build first")
+# Run:  .\claude-batch.ps1 -Features Tools\features\phase1-core.txt -PlanOnly
+# The full design is in game-spec.txt at the repo root; each feature names the spec section to read.
+# Lines starting '#' are ignored. A feature runs until the next "N." line, so never start a
+# continuation line with a number followed by '.' or ')'.
+
+1. Project foundation. The repo has no code yet. Set up a first-person 3D browser game in TypeScript with Vite
+   and Three.js (WebGL), with Vitest for unit tests and npm scripts "dev", "build" and "test". The game is played
+   in first person throughout; the only 2D screens are the paper map, the pack and menus.
+   Lay out folders for: world data (terrain, generation), simulation (time, walking, survival), UI (paper map,
+   HUD) and rendering. Keep simulation code free of Three.js so it can be unit-tested headless.
+   There is no world seed and no per-play variation for now: there is one fixed world, generated once, offline,
+   by a Node build script that you write and run yourself, and committed as data. The game only loads that data at
+   runtime and never rolls dice for the world. Put the build scripts under tools/worldgen and the committed output
+   in the world data folder. A small deterministic RNG (e.g. mulberry32) may be used inside the build scripts only.
+   Add a CLAUDE.md describing the stack, folder layout and how to build and test, so later sessions don't survey.
+
+2. Real terrain for a 10 km x 10 km patch around Okehampton (spec SX 02, "Three levels of detail").
+   The patch must include the start point at the old target railway below Rowtor (50.7024 N, 3.9942 W, about 470 m)
+   plus Yes Tor (619 m), High Willhays, the West Okement valley, Okehampton Camp and Okehampton town.
+   Write an offline Node script that turns free OS Terrain 50 height data (and OS OpenMap Local or OpenStreetMap
+   for roads, rail, rivers, woodland and buildings with their type) into a compact game data file on a 50 m grid,
+   and commit only the processed output, not the raw downloads. If the data can't be downloaded in the session,
+   document the exact download steps and ship a clearly-labelled synthetic stand-in in the same format so later
+   work isn't blocked. Never randomise terrain: hills, rivers, roads and towns are real.
+
+3. High-water mark and flood bands (spec SX 03). Store one high-water value per 1 km tile: a smooth slope from
+   about 430 m on Dartmoor (south-west) falling to about 280 m at Mendip (north-east), plus gentle variation,
+   computed once by the world build script and committed (no per-play shift). Classify every 50 m cell into a band: above the mark,
+   strandline (top 20 m below the mark), scour zone (deeper), or still under water. Run a "fill the hollows"
+   (priority-flood depression filling) pass once at world creation to find how deep each closed hollow holds
+   water, so trapped lakes can later fall a few centimetres a day. Run it in the build script and commit the
+   result. Unit-test the band classification and the fill.
+
+4. First-person world view. Render the patch in 3D from eye height: a chunked terrain mesh built from the real
+   heights (interpolated between the 50 m posts, with fixed small-scale roughness for close ground,
+   the same on every visit), with level of
+   detail so distant hills stay visible out to at least 8 km, since the view from tors is central to the game.
+   Sky, sun and a light fog; ground coloured so the flood bands read by eye (scoured ground stripped and mud-grey,
+   a strandline wrack line, standing water as a flat water surface). Roads, rivers, woods and buildings as simple
+   low-poly shapes. Mouse-look with pointer lock.
+
+5. Overhead debug view (spec SX 10, first item: "viewed from above"). A developer-only toggle that shows the patch
+   from above with height shading, the flood bands, the 1 km tile grid, the high-water value per tile and the
+   player's position and facing. It is a testing tool, not part of play.
+
+6. Game clock and walking with a load model (spec SX 05). A game clock (start Day 0, 18:00, in July) driving the
+   sun position and day/night lighting in the first-person view. First-person movement (WASD) following the terrain,
+   with walking speed from ground type, slope, load and party. Load bands as a share of each person's body weight: up to 20% normal pace; 20 to 30% about 15%
+   slower and tire faster; 30 to 40% about 35% slower plus ankle/knee injury risk climbing rough ground; over 40%
+   short hops and frequent rests. Work it out separately for parent and child (a 12-year-old of 40 kg hits 20% at
+   8 kg); the party moves at the slower one's pace. Model a pack with item weights (camping kit about 5 to 6 kg
+   each, tin of food 0.4 kg, water 1 kg per litre, gas canister 0.4 kg). Targets: 15 to 25 km a day on paths,
+   5 to 10 km through debris. Unit-test the pace maths.
+
+7. Paper map with pencil (spec SX 04). A separate OS-style paper map screen showing only the pre-disaster world:
+   contours, roads, rivers, towns, grid squares. It shows none of the damage and the game never draws on it.
+   The player draws routes with a pencil tool, adds text notes, crosses things out and erases. Marks persist in
+   the save. Optional light hint mode (off by default) that adds only a faint "you saw something here" mark.
+
+8. Planned versus real leg times (spec SX 04). When the player marks a leg on the paper map, show a planned time
+   using Naismith's rule (5 km an hour plus an hour for every 600 m of climbing, from the real height data),
+   slowed for load and party. After walking the leg, show the real time beside it. Unit-test the Naismith maths.
+
+9. Fixed district data (spec SX 02). Generate every 1 km tile's hidden district data once, in the world build
+   script, and commit it; the game loads it and keeps it hidden from the player: local flood height, large craters,
+   which bridges stand,
+   which roads are blocked, fires, gas hollows, and counts of animals. Place by likelihood, not evenly:
+   a bridge 40 m below the mark falls about 9 times in 10 and one above it about 1 in 10; a road through a wood
+   below the mark is nearly always blocked, an open moor road above it nearly never. Also decide, once, which
+   side of the moor took the worst of the storm and which two or three major bridges survived. Check the result
+   yourself in the overhead debug view and hand-fix anything implausible before committing. Unit-test that the
+   committed data loads and matches its schema, and that bridge and road states follow the likelihood rules overall.
+
+10. Fixed ground detail (spec SX 02). Generate each 1 km tile's 2 to 5 m ground detail once in the world build
+   script and commit it as compact per-tile files, loaded when the player enters the tile (or views it through the
+   scope): rubble, fallen trees, small craters, wrack piles
+   and loot per building (using building type). Below the mark, debris density depends on distance from roads and
+   settlements (thick near towns, thin across open fields) and piles up in valley bottoms, against stone walls and
+   against standing Devon hedge banks. Crater sizes follow a steep curve: for each 50 m crater about ten of 15 m and
+   about a hundred of 5 m. Store detail sparsely (object lists, not full cell grids) so the committed files stay
+   small. Save only what the player changed (items
+   taken, doors forced, carcasses), never the whole tile. Show the detail in the first-person view as simple
+   low-poly instanced objects (rubble, trunks, cars, wrack, crater rims) and carve craters into the terrain mesh,
+   with nearby tiles detailed and distant ones left at district level so performance holds.
+
+11. Damage blockers with costs and ways past (spec SX 02, "Damage blocks"). Each blocker is a choice, not a wall:
+   pocked ground slows walking about 10% and trips you in the dark; craters 5 to 50 m to go round, large ones with a
+   ring of thrown-out rock and sometimes standing water; rare strike zones of 100 m and up (2 to 5 in the patch), burning
+   or glassy, visible from tors as smoke; wrack dams at bridges and valley narrows (climb across slowly with injury
+   risk, or go upstream); bridges out (ford, swim losing unsealed gear, or detour); landslips on steep valley sides;
+   fallen woodland (very slow); silt and mud flats (slow, tiring, soft patches can trap you); gas hollows on valley
+   floors days 1 to 5 only (warned by dead birds and no insects); standing water (wade, raft, or go round).
+   Wire their movement costs into the walking model.
+
+12. Always leave a way through (spec SX 02). In the world build script, after generating the districts, check that
+   a walkable route exists from the start to the far edge of the playable area (later: to Priddy), and reopen one
+   blocked crossing if it doesn't, before the data is committed. Make the check a reusable function, unit-tested on
+   a small hand-made district grid that would otherwise be blocked, plus a test that the committed world passes.
+
+13. The scope from high ground (spec SX 04). Raising binoculars or a rifle scope gives a zoomed first-person view
+   (narrow field of view, scope or binocular overlay). From a tor or hilltop it reveals the district-level damage on
+   every tile in line of sight from the real height data, up to about 8 km in clear weather and less in rain or
+   smoke: distant tiles that were drawn plain now show their craters, smoke, broken bridges and blocked roads.
+   Nothing is added to the paper map; the player marks it themselves. Climbing to look should cost real time and energy.

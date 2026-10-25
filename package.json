@@ -1,0 +1,24 @@
+{
+  "name": "post-apoc-three",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "worldgen": "tsx Tools/worldgen/build.ts",
+    "worldgen:import": "tsx Tools/worldgen/import.ts",
+    "shot": "tsx Tools/screenshot.ts"
+  },
+  "dependencies": {
+    "@types/node": "^26.6.5",
+    "@types/three": "^0.186.0",
+    "playwright-core": "^1.64.1",
+    "three": "^0.186.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

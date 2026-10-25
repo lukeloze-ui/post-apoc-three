@@ -1,0 +1,87 @@
+# High Water Mark - phase 2: survival systems and the full journey
+# Plan this AFTER phase 1 is built and committed, so task briefs can name real files:
+#   .\claude-batch.ps1 -Features Tools\features\phase2-survival.txt -PlanOnly
+# The full design is in game-spec.txt at the repo root; each feature names the spec section to read.
+
+1. Flood timeline after the surge (spec SX 03). Drive the flood state from the game clock in phases. Draining,
+   days 2 to 5: slopes clear first, valleys run as brown torrents, every river in huge flood, low ground soft silt;
+   leaving early is possible but slow and dangerous. Trapped water, weeks: hollows found by the fill pass hold salt
+   lakes that fall a few centimetres a day. The Levels stay a shallow brackish inland sea all game. Gas hollows
+   (heavier than air, pooled in valleys and towns) clear by day 5 or as wind clears them. Rivers become fordable
+   again as they fall, so what is open changes day by day.
+
+2. Food, water and energy (spec SX 05). Track calories, hydration, fatigue, health and morale per person.
+   Walking with a pack over rough ground burns 3,500 to 4,500 kcal a day, scaled by load, distance and terrain;
+   a child needs less. A tin is 0.4 kg for only 300 to 450 kcal; smoked or dried meat has about three times the
+   calories of fresh per kilo. Water: streams above the mark are safe after filtering; below it they are salty and
+   dirty. A 230 g gas canister boils about 20 litres and can't be refilled, so wood fires matter later.
+   Eating, drinking, filtering, cooking and resting are actions that take game time.
+
+3. Scavenging by band (spec SX 03, "Bands below the line"). Search buildings, cars and wrack piles from the
+   ground-detail loot. Above the mark: buildings stand with holed roofs, little food. Strandline: the best
+   scavenging, sealed tins survive water, but piles are unstable, slow and risky. Scour zone: towns reduced to
+   foundations; buried shops and cellars hold loot only if you dig (slow). Floating wrack on standing water can be
+   harvested. Taken items are recorded in the tile's saved changes.
+
+4. Map memory and found OS sheets (spec SX 04). The paper map's quality depends on what the character remembers:
+   the route home by car (A30, M5, A39) and the Dartmoor walking area are accurate; places in between are sketchier,
+   with fewer lanes and approximate contours. Finding a real OS sheet in a farmhouse or a car is a prize item that
+   redraws that sheet's area of the paper map accurately.
+
+5. Extend the world to the full journey (spec SX 02 landscapes, SX 04 likely routes). Run the terrain pipeline
+   over the whole region from Dartmoor to Priddy on Mendip (about 260 m), covering the direct route (Okehampton,
+   Crediton, Tiverton, Taunton), the high route (Exmoor, Brendons, Quantocks) and the east route (Haldon, Blackdown
+   Hills), the Somerset Levels, Glastonbury, the Poldens, Wedmore and Cheddar Gorge. Stream terrain and tiles in
+   and out by area so memory stays bounded. Check each landscape reads right against the mark: Quantocks ridge
+   (Wills Neck 384 m) above a mark of about 300 m; Cheddar Gorge wholly below it; Priddy in the strandline band.
+
+6. Okehampton Camp and the first weight decision (spec SX 01, days 2 to 4). The camp is half wrecked. Its cracked
+   armoury holds an L403A1 rifle (3.5 to 5 kg), some ammunition (12 g a round) and a few 30-round magazines
+   (0.5 kg loaded). A store room nearby has a .22 air rifle (about 3 kg) and thousands of pellets (a 500-pellet tin
+   is 0.3 kg and lasts most of a game). The player can't comfortably carry both guns and a full food load.
+   Let the player leave items in a cache that persists on the map and come back for them.
+
+7. Animals and how they spread (spec SX 06). Starting animal populations per tile, generated once in the world
+   build script and committed with the rest of the fixed world: rabbits above the mark,
+   pheasants and pigeons; roe deer in the valley woods at the moor's edge; red deer on Exmoor and the Quantocks;
+   very rare sheep, cattle, pigs and Dartmoor ponies; nothing in the scour zone at first. Deer are placed in a few
+   fixed spots, with signs to find. Regrowth: grass returns first on high ground and rain-washed slopes, later
+   on low salty flats; each game day move animals a little towards neighbouring tiles with more new grass. Birds
+   move from day 1: gulls and crows on the strandline, pigeons and pheasants above the mark, ducks on new water.
+   Rabbits and deer spread down into the valleys over the following weeks.
+
+8. Hunting with the .22 air rifle (spec SX 06). Rabbits, pheasants, ducks, pigeons and small birds. Range about
+   30 to 40 m and it needs a head shot, so stalking matters (approach, wind, cover). Nearly silent. Ammunition is
+   never the limit; time and skill are. A rabbit, pheasant or duck is one meal for two, roasted whole over a fire,
+   and should feel like the best part of the day. Add snares as a second quiet option.
+
+9. The service rifle and noise (spec SX 06). For deer. Limited rounds, so every shot is a decision.
+   A shot is heard several kilometres away: it scares off nearby animals. Weight trade-off
+   already comes from the pack model.
+
+10. Fishing (spec SX 06). Slow, quiet and steady, suited to camp days. Tackle from wrecked houses and tackle shops,
+   or a crude line with safety-pin hooks from the first aid kit. Moorland streams above the mark: small brown trout,
+   a few hundred kcal each. Trapped salt lakes: bass and mullet for a few weeks until the lakes shrink or go stale.
+   Rivers below the mark: almost dead at first, recovering slowly. The Levels: eels and coarse fish from the raft,
+   plus overnight eel traps. Stranded fish in draining pools: free food for a day, then they rot.
+
+11. Spoilage, butchery and smoking (spec SX 06, "The big kill decision"). Fresh meat goes off within one to two days
+   in July without cooling. A roe deer gives about 8 to 12 kg of meat, a red deer 40 kg or more. Feasting on fresh
+   cuts and offal first restores health and morale. Smoking at camp for one or two days turns about 10 kg of fresh
+   meat into 3 to 4 kg that keeps for weeks, but the fire is visible from far off. Bones for stock, fat for cooking,
+   hide for a groundsheet or raft lashings, scraps for the dogs. Needs a camp site, water and wood. Score each kill
+   on how much was used and show the figure. Butchery fades to black and shows a results screen (meat, hide, waste),
+   optionally with a short line from the child.
+
+12. Dogs, up to two (spec SX 07). Staffies that outlived their owners, won over by feeding them and sitting quietly
+   across a few encounters. They warn of animals at night, flush pheasants and rabbits, track a wounded
+   deer and raise morale. A 20 kg dog needs about 1,000 kcal a day and can carry a dog pack of a few kilos at most.
+   Dogs can be injured and need rest or carrying, but cannot die unless an option is switched on.
+
+13. Rafts and the Levels (spec SX 01 finale, SX 03). Build a raft from wrack, hide lashings or found boats.
+   Move by raft, wading and between higher ground at the Poldens, Burtle, Glastonbury (the Isle of Avalon again) and
+   Wedmore, over a shallow brackish sea with drowned trees, roofs and roads under the surface. Every route ends by
+   crossing water here, so the raft is part of the final act.
+
+14. Save and load. Save the world data version, game clock, party state, pack and caches, paper map marks, per-tile player
+   changes and animal populations; load restores the same world. The fixed world data itself is never saved, only the changes made to it. Unit-test a save/load round trip.
