@@ -39,6 +39,8 @@ export interface DebugLayer {
   label: string;
   defaultOn: boolean;
   draw(ctx: CanvasRenderingContext2D, view: DebugViewport): void;
+  /** Text for the record under the cursor at local (x, y), if any. The topmost layer with an answer wins. */
+  hover?(view: DebugViewport, x: number, y: number): string | undefined;
 }
 
 const layers: DebugLayer[] = [];
@@ -312,7 +314,8 @@ export function createOverheadView(
       readout.textContent = '';
       return;
     }
-    const { x, y } = viewport().toLocal(mouse.px, mouse.py);
+    const vp = viewport();
+    const { x, y } = vp.toLocal(mouse.px, mouse.py);
     const { terrain, flood, lakes, gameDay } = data;
     if (x < 0 || y < 0 || x >= terrain.sizeX || y >= terrain.sizeY) {
       readout.textContent = `local ${x.toFixed(0)}, ${y.toFixed(0)} m (outside patch)`;
@@ -325,6 +328,15 @@ export function createOverheadView(
       `local ${x.toFixed(0)}, ${y.toFixed(0)} m   OSGB ${o.e.toFixed(0)}, ${o.n.toFixed(0)}   ${gridRef(o.e, o.n)}\n` +
       `height ${heightAt(terrain, x, y).toFixed(1)} m   mark ${hwAt(flood.hw, x, y).toFixed(1)} m   ` +
       `band ${band} ${BAND_INFO[band]?.name ?? '?'}   (day ${gameDay})`;
+    for (let k = layers.length - 1; k >= 0; k--) {
+      const l = layers[k] as DebugLayer;
+      if (!l.hover || !(on.get(l.id) ?? l.defaultOn)) continue;
+      const text = l.hover(vp, x, y);
+      if (text) {
+        readout.textContent += '\n' + text;
+        break;
+      }
+    }
   };
 
   function redraw(): void {

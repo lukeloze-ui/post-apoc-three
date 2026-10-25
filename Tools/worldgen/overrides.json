@@ -1,0 +1,18 @@
+{
+  "about": "Hand fixes to districts.json, applied by the last worldgen step (Tools/worldgen/steps/overrides.ts). kind is bridge, roadSegment, crater, strikeZone, fire or gasHollow; give exactly one of set, remove or add, and always a reason.",
+  "overrides": [
+    { "kind": "roadSegment", "id": "w158203922-5", "set": { "blocked": false }, "reason": "Landslip on flat open moor at 594 m (slope 7%), far above the mark: nothing to slip." },
+    { "kind": "roadSegment", "id": "w399665894-0", "set": { "blocked": false }, "reason": "Landslip on flat open moor at 616 m (slope 3%), far above the mark: nothing to slip." },
+    { "kind": "roadSegment", "id": "w403611011-2", "set": { "blocked": false }, "reason": "Landslip on flat open moor at 595 m (slope 4%), far above the mark: nothing to slip." },
+    { "kind": "roadSegment", "id": "w37344097-4", "set": { "blocked": false }, "reason": "New Bridge Road landslip on a 7% slope at 430 m, just above the mark: too gentle to slip (segment -2 on the steeper 17% bank stays blocked)." },
+    { "kind": "roadSegment", "id": "w404079589-0", "set": { "blocked": false }, "reason": "SX 01: the armoury must be reachable. One road line from the camp's south gate to its centre (the way in from the start) stays open." },
+    { "kind": "roadSegment", "id": "w29502491-0", "set": { "blocked": false }, "reason": "SX 01: the armoury must be reachable. One road line from the camp's south gate to its centre (the way in from the start) stays open." },
+    { "kind": "roadSegment", "id": "w398532277-0", "set": { "blocked": false }, "reason": "SX 01: the armoury must be reachable. One road line from the camp's south gate to its centre (the way in from the start) stays open." },
+    { "kind": "roadSegment", "id": "w37006466-5", "set": { "blocked": false }, "reason": "SX 01: the armoury must be reachable. One road line from the camp's south gate to its centre (the way in from the start) stays open." },
+    { "kind": "roadSegment", "id": "w37006041-7", "set": { "blocked": false }, "reason": "SX 01: the armoury must be reachable. One road line from the camp's south gate to its centre (the way in from the start) stays open." },
+    { "kind": "roadSegment", "id": "w37006419-1", "set": { "blocked": false }, "reason": "SX 01: the armoury must be reachable. One road line from the camp's south gate to its centre (the way in from the start) stays open." },
+    { "kind": "crater", "id": "cr-camp-0", "add": { "x": 6813, "y": 4999, "r": 9, "water": false }, "reason": "SX 01: the camp is half wrecked. The generator keeps strikes off it (nearest crater 211 m out), so three craters are placed on buildings in its western half." },
+    { "kind": "crater", "id": "cr-camp-1", "add": { "x": 6730, "y": 5099, "r": 11, "water": false }, "reason": "SX 01: the camp is half wrecked (on the NAAFI block)." },
+    { "kind": "crater", "id": "cr-camp-2", "add": { "x": 6668, "y": 5014, "r": 8, "water": false }, "reason": "SX 01: the camp is half wrecked (on block 100)." }
+  ]
+}

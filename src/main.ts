@@ -18,6 +18,8 @@ import { createSurface } from './world/surface';
 import { fetchFlood } from './world/flood';
 import { fetchLakes } from './world/lakes';
 import { createOverheadView } from './ui/debug/overheadView';
+import { registerDistrictLayers } from './ui/debug/districtLayers';
+import { fetchDistricts } from './world/districts';
 import { osgbToLocal } from './world/geo';
 import { createStatsReadout } from './ui/debug/stats';
 import { clockLabel, createHud } from './ui/hud';
@@ -94,15 +96,16 @@ async function main(): Promise<void> {
   // The dev fly camera replaces walking with ?fly=1.
   const fly = params.fly ? new FlyCamera(look) : null;
 
-  // Dev tool: only in dev builds or with ?view=debug.
-  const debugView =
-    import.meta.env.DEV || params.view === 'debug'
-      ? createOverheadView({ terrain, flood, lakes, gameDay: clock.gameDays }, () => ({
-          x: gs.camera.position.x,
-          y: -gs.camera.position.z,
-          yaw: look.yaw,
-        }))
-      : null;
+  // Dev tool: only in dev builds or with ?view=debug. The hidden district damage is shown only here.
+  const wantDebug = import.meta.env.DEV || params.view === 'debug';
+  if (wantDebug) registerDistrictLayers(await fetchDistricts('/world/', features));
+  const debugView = wantDebug
+    ? createOverheadView({ terrain, flood, lakes, gameDay: clock.gameDays }, () => ({
+        x: gs.camera.position.x,
+        y: -gs.camera.position.z,
+        yaw: look.yaw,
+      }))
+    : null;
   if (debugView) {
     if (params.view === 'debug') debugView.setVisible(true);
     window.addEventListener('keydown', (ev) => {
