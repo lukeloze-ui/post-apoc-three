@@ -20,9 +20,9 @@ export interface BandEffects {
 }
 
 /** Walk/rest cycle for band 4: walk 20 min at 0.65, rest 17 min: 0.65*20/37 ~ 0.35. */
-const HOP_WALK_MIN = 20;
-const HOP_REST_MIN = 17;
-const HOP_WALK_PACE = 0.65;
+export const HOP_WALK_MIN = 20;
+export const HOP_REST_MIN = 17;
+export const HOP_WALK_PACE = 0.65;
 
 export function loadShare(carriedKg: number, bodyKg: number): number {
   return carriedKg / bodyKg;
