@@ -176,6 +176,21 @@ export function buildDamageIndex(d: Districts, woods: readonly WoodFeature[], ce
   };
 }
 
+/** True if an active gas hollow (its days, as in conditionsAt) has a cell within reachM of (x, y): the cue to warn. */
+export function gasNearby(dm: DamageIndex, x: number, y: number, gameDay: number, reachM: number): boolean {
+  const day = Math.floor(gameDay);
+  const c0 = Math.floor((x - reachM) / dm.cellM);
+  const c1 = Math.floor((x + reachM) / dm.cellM);
+  const r0 = Math.floor((y - reachM) / dm.cellM);
+  const r1 = Math.floor((y + reachM) / dm.cellM);
+  for (let r = r0; r <= r1; r++) {
+    for (let c = c0; c <= c1; c++) {
+      if (dm.gas.get(r * 4096 + c)?.some((h) => day >= h.fromDay && day <= h.toDay)) return true;
+    }
+  }
+  return false;
+}
+
 interface DebrisSpot extends RoundSpot {
   ground: GroundType;
   label: string;

@@ -1,12 +1,14 @@
 import type { Player } from '../sim/player';
 import { GROUND_LABEL } from '../world/conditions';
+import { conditionText } from '../sim/condition';
 
 /** The HUD text for the player: pace, the ground's condition, and each person's load band and stamina. */
 export function playerHudLines(p: Player): string[] {
   const pace = p.resting ? 'resting' : `${(p.paceMs * 3.6).toFixed(1)} km/h`;
   const lines = [`${pace}  on ${p.conditions?.explanation ?? GROUND_LABEL[p.groundType]}`];
   for (const s of p.status()) {
-    lines.push(`${s.name}  load ${s.band}  stamina ${Math.round(s.stamina * 100)}%`);
+    const hurt = conditionText(p.hazards.conditions[s.id]);
+    lines.push(`${s.name}  load ${s.band}  stamina ${Math.round(s.stamina * 100)}%${hurt ? `  ${hurt}` : ''}`);
   }
   return lines;
 }

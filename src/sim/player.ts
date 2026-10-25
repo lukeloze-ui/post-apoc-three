@@ -2,6 +2,8 @@
 // Local frame as in world/terrain.ts: x metres east, y metres north. Yaw 0 is north, clockwise, in degrees.
 import { defaultParty, loadBand, loadShare, type LoadBand, type Party } from './load';
 import { carriedKg } from './pack';
+import { partyConditionEffort, partyConditionPace } from './condition';
+import { newHazardState, stepHazards, type HazardEvent, type HazardRng, type HazardState } from './hazards';
 import type { Conditions } from '../world/conditions';
 import { newWalkState, speedMs, stepWalk, RECOVER_PER_HOUR, type GroundType, type WalkState } from './walking';
 
@@ -18,6 +20,10 @@ export interface WalkWorld {
   waterDepthAt?(x: number, y: number): number;
   /** Damage blockers and ground debris merged with the ground type (world/conditions.ts), for the current day. */
   conditionsAt?(x: number, y: number): Conditions;
+  /** Days since d0-00:00 (GameClock.gameDays); hazards need it for the gas days. Absent: day 0. */
+  gameDays?(): number;
+  /** Sun altitude in degrees; below -6 it is dark and rough ground trips you. Absent: broad daylight. */
+  sunAltitude?(): number;
 }
 
 /** WASD as -1..1 axes: forward is +1 for W, right is +1 for D. */
@@ -64,14 +70,50 @@ export class Player {
   /** Metres per game second actually covered in the last step. */
   movedMs = 0;
   resting = false;
+  /** Injuries, wetness, exposure and gas dose (sim/hazards.ts). */
+  hazards: HazardState;
+  /** Hazard events since the caller last took them, for the HUD. */
+  private events: HazardEvent[] = [];
 
   constructor(
     public x: number,
     public y: number,
     public yaw: number,
     public party: Party = defaultParty(),
+    /** Gameplay rng for trips and injuries; tests pass a seeded one. */
+    private readonly rng: HazardRng = { next: Math.random },
   ) {
     this.walk = newWalkState(party);
+    this.hazards = newHazardState(party);
+  }
+
+  /** The hazard events since the last call (trips, injuries, stuck, gas, collapse). */
+  takeEvents(): HazardEvent[] {
+    const e = this.events;
+    this.events = [];
+    return e;
+  }
+
+  /** Roll the hazards for a step of dt seconds over metres; returns the extra game seconds lost. */
+  private rollHazards(dt: number, metres: number, world: WalkWorld): number {
+    const res = stepHazards(
+      this.hazards,
+      this.party,
+      {
+        hazards: this.conditions?.hazards ?? { tripInDark: false, injuryRisk: 0, trapRisk: 0, gas: false, waterDepth: 0, impassable: false },
+        groundType: this.groundType,
+        grade: this.grade,
+        movedM: metres,
+        dtSec: dt,
+        gameDays: world.gameDays?.() ?? 0,
+        sunAltitude: world.sunAltitude?.() ?? 90,
+        stamina: this.walk.stamina,
+        walking: metres > 0,
+      },
+      this.rng,
+    );
+    if (res.events.length) this.events.push(...res.events);
+    return res.lostSec;
   }
 
   get stamina(): Readonly<Record<string, number>> {
@@ -94,8 +136,8 @@ export class Player {
     this.z = world.heightAt(this.x, this.y);
     this.conditions = world.conditionsAt?.(this.x, this.y) ?? null;
     this.groundType = this.conditions?.groundType ?? world.groundTypeAt(this.x, this.y);
-    this.speedFactor = this.conditions?.speedFactor ?? 1;
-    this.effortFactor = this.conditions?.effortFactor ?? 1;
+    this.speedFactor = (this.conditions?.speedFactor ?? 1) * partyConditionPace(this.hazards.conditions, this.party);
+    this.effortFactor = (this.conditions?.effortFactor ?? 1) * partyConditionEffort(this.hazards.conditions, this.party);
     const rise = world.heightAt(this.x + dx * b, this.y + dy * b) - world.heightAt(this.x - dx * b, this.y - dy * b);
     this.grade = clamp(rise / (2 * b), -MAX_GRADE, MAX_GRADE);
     this.resting = this.walk.restLeftSec > 0;
@@ -140,28 +182,30 @@ export class Player {
     if (this.walk.restLeftSec > 0) {
       const take = Math.min(dt * REST_TIME_SPEEDUP, this.walk.restLeftSec);
       stepWalk(this.walk, this.party, this.groundType, 0, take);
+      this.rollHazards(take, 0, world);
       this.sense(world, dx, dy);
       return take;
     }
 
     this.sense(world, dx, dy);
-    if (!wants) {
+    if (!wants || this.hazards.collapsed) {
       // Standing still: stamina comes back and the walked-since-rest clock winds down.
       const hours = dt / 3600;
       for (const p of this.party.people) {
         this.walk.stamina[p.id] = Math.min(1, (this.walk.stamina[p.id] ?? 1) + RECOVER_PER_HOUR * hours);
       }
       this.walk.walkedSec = Math.max(0, this.walk.walkedSec - dt);
-      return dt;
+      return dt + this.rollHazards(dt, 0, world);
     }
 
     const metres = stepWalk(this.walk, this.party, this.groundType, this.grade, dt, this.speedFactor, this.effortFactor);
     const x0 = this.x;
     const y0 = this.y;
     this.moveTo(x0 + dx * metres, y0 + dy * metres, world);
-    this.movedMs = Math.hypot(this.x - x0, this.y - y0) / dt;
+    const moved = Math.hypot(this.x - x0, this.y - y0);
+    this.movedMs = moved / dt;
     this.sense(world, dx, dy);
-    return dt;
+    return dt + this.rollHazards(dt, moved, world);
   }
 
   /** Move to (nx, ny) kept inside the patch; if deep water or impassable ground is in the way, slide along one axis or stay put. */
@@ -189,8 +233,15 @@ export class Player {
 }
 
 /** A player standing at (x, y), with ground, grade and pace already read. */
-export function createPlayer(x: number, y: number, yaw: number, world: WalkWorld, party: Party = defaultParty()): Player {
-  const p = new Player(x, y, yaw, party);
+export function createPlayer(
+  x: number,
+  y: number,
+  yaw: number,
+  world: WalkWorld,
+  party: Party = defaultParty(),
+  rng?: HazardRng,
+): Player {
+  const p = new Player(x, y, yaw, party, rng);
   p.sense(world, Math.sin((yaw * Math.PI) / 180), Math.cos((yaw * Math.PI) / 180));
   return p;
 }

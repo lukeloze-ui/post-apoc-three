@@ -32,9 +32,11 @@ export interface WalkWorldSources {
   /** District damage (buildDamageIndex) and the loaded ground debris (createDebrisIndex); either may be left out. */
   damage?: DamageIndex;
   debris?: DebrisIndex;
+  /** Sun altitude, degrees, for the hazards (trips in the dark). Absent: broad daylight. */
+  sunAltitude?(): number;
 }
 
-export function createWalkWorld({ surface, roads, lakes, gameDays, damage, debris }: WalkWorldSources): WalkWorld {
+export function createWalkWorld({ surface, roads, lakes, gameDays, damage, debris, sunAltitude }: WalkWorldSources): WalkWorld {
   const { terrain } = surface;
   const cond: ConditionsWorld = {
     groundTypeAt(x, y) {
@@ -55,5 +57,7 @@ export function createWalkWorld({ surface, roads, lakes, gameDays, damage, debri
     groundTypeAt: cond.groundTypeAt,
     waterDepthAt: (x, y) => cond.waterDepthAt!(x, y, gameDays()),
     conditionsAt: (x, y) => conditionsAt(x, y, gameDays(), cond),
+    gameDays,
+    sunAltitude,
   };
 }

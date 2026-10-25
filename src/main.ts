@@ -32,11 +32,14 @@ import { osgbToLocal } from './world/geo';
 import { createStatsReadout } from './ui/debug/stats';
 import { clockLabel, createHud, createInteractHud } from './ui/hud';
 import { createPlayerHud } from './ui/playerHud';
+import { createHazardHud } from './ui/hazardHud';
+import { DeadBirds } from './render/deadBirds';
+import { GAS_CUE_REACH_M } from './sim/hazards';
 import { WalkKeys } from './ui/keys';
 import { createPlayer } from './sim/player';
 import { WalkLog } from './sim/walkLog';
 import { createWalkWorld } from './sim/walkWorld';
-import { buildDamageIndex, createDebrisIndex } from './world/conditions';
+import { buildDamageIndex, createDebrisIndex, gasNearby } from './world/conditions';
 import { buildRoadIndex } from './world/roadIndex';
 import { EYE_HEIGHT_M, HeadBob } from './render/headBob';
 import { createPaperMap } from './ui/paperMap/paperMap';
@@ -100,6 +103,7 @@ async function main(): Promise<void> {
   chunks.buildAll(start.x, start.y);
   const linework = new Linework(surface, features, flood, { districts, plainSurface });
   const damage = new DistrictDamage(surface, features, districts);
+  const deadBirds = new DeadBirds(surface, districts);
   const woodsAndBuildings = new WoodsAndBuildings(surface, features, flood);
   woodsAndBuildings.buildAll(start.x, start.y);
   gs.scene.add(
@@ -109,6 +113,7 @@ async function main(): Promise<void> {
     linework.group,
     woodsAndBuildings.group,
     damage.group,
+    deadBirds.group,
   );
 
   // Ground detail: the 3x3 tiles round the player (and any the scope asks for), on top of the saved changes.
@@ -173,19 +178,22 @@ async function main(): Promise<void> {
   };
   await syncGround(start.x, start.y);
   const look = new Look(gs.renderer.domElement, params.yaw ?? saved?.yaw ?? START.yaw, params.pitch ?? 0);
+  const damageIndex = buildDamageIndex(districts, features.woods, terrain.meta.cellM);
   const walkWorld = createWalkWorld({
     surface,
     roads: buildRoadIndex(features.roads),
     lakes,
     gameDays: () => clock.gameDays,
-    damage: buildDamageIndex(districts, features.woods, terrain.meta.cellM),
+    damage: damageIndex,
     debris,
+    sunAltitude: () => sunAltitude,
   });
   const player = createPlayer(start.x, start.y, look.yaw, walkWorld);
   const walkLog = new WalkLog();
   const keys = new WalkKeys();
   const bob = new HeadBob();
   const playerHud = params.fly ? null : createPlayerHud();
+  const hazardHud = params.fly ? null : createHazardHud();
   // E searches, digs or forces what the player is looking at; the changes go into groundDeltas, then the tile is redrawn.
   const interactHud = createInteractHud();
   let target: Target | undefined;
@@ -317,6 +325,7 @@ async function main(): Promise<void> {
         }
         gs.camera.position.set(player.x, player.z + EYE_HEIGHT_M + bob.update(dt, player.movedMs), -player.y);
         playerHud?.update(player);
+        hazardHud?.update(player, gasNearby(damageIndex, player.x, player.y, clock.gameDays, GAS_CUE_REACH_M), performance.now());
         if (pressedE) interact();
         pressedE = false;
         target = findTarget([...baseTiles.values()], groundDeltas, player.party, player.x, player.y, look.yaw);
@@ -329,6 +338,7 @@ async function main(): Promise<void> {
       linework.update(gs.camera.position.x, -gs.camera.position.z);
       woodsAndBuildings.update(gs.camera.position.x, -gs.camera.position.z);
       damage.update(gs.camera, clock.gameDays, sunAltitude, performance.now() / 1000);
+      deadBirds.update(clock.gameDays);
       const hereKey = tileKey(gs.camera.position.x, -gs.camera.position.z);
       if (!groundBusy && hereKey !== groundAt) {
         groundAt = hereKey;
