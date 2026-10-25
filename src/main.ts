@@ -2,12 +2,15 @@ import { parseUrlParams } from './urlParams';
 import { createScene } from './render/scene';
 import { Look } from './render/look';
 import { FlyCamera } from './render/fly';
-import { buildTerrainMesh } from './render/terrainMesh';
-import { fetchTerrain, heightAt, START } from './world/terrain';
+import { TerrainChunks } from './render/terrainChunks';
+import { buildTerrainApron } from './render/terrainApron';
+import { fetchTerrain, START } from './world/terrain';
+import { createSurface, surfaceHeight } from './world/surface';
 import { fetchFlood } from './world/flood';
 import { fetchLakes } from './world/lakes';
 import { DEFAULT_GAME_DAY, createOverheadView } from './ui/debug/overheadView';
 import { osgbToLocal } from './world/geo';
+import { createStatsReadout } from './ui/debug/stats';
 
 declare global {
   interface Window {
@@ -24,13 +27,16 @@ async function main(): Promise<void> {
   const [flood, lakes] = await Promise.all([fetchFlood('/world/', terrain), fetchLakes('/world/', terrain)]);
 
   const gs = createScene(document.body);
-  gs.scene.add(buildTerrainMesh(terrain));
+  const surface = createSurface(terrain);
 
   const start =
     params.e !== undefined && params.n !== undefined ? osgbToLocal(params.e, params.n) : { x: START.x, y: START.y };
+  const chunks = new TerrainChunks(surface);
+  chunks.buildAll(start.x, start.y);
+  gs.scene.add(chunks.group, buildTerrainApron(surface));
   const look = new Look(gs.renderer.domElement, params.yaw ?? START.yaw, params.pitch ?? 0);
   // World frame: x east, z = -north, y up.
-  gs.camera.position.set(start.x, heightAt(terrain, start.x, start.y) + EYE_HEIGHT, -start.y);
+  gs.camera.position.set(start.x, surfaceHeight(surface, start.x, start.y) + EYE_HEIGHT, -start.y);
   const fly = params.fly ? new FlyCamera(look) : null;
 
   // Dev tool: only in dev builds or with ?view=debug.
@@ -51,12 +57,22 @@ async function main(): Promise<void> {
     });
   }
 
-  window.__game = { params, terrain, look, ...gs };
+  const stats = params.stats
+    ? createStatsReadout(() => ({
+        calls: gs.renderer.info.render.calls,
+        triangles: gs.renderer.info.render.triangles,
+        extra: chunks.pending > 0 ? `${chunks.pending} chunks queued` : undefined,
+      }))
+    : null;
+
+  window.__game = { params, terrain, surface, chunks, look, ...gs };
 
   gs.run(
     (dt) => {
       fly?.update(gs.camera, dt);
       look.apply(gs.camera);
+      chunks.update(gs.camera.position.x, -gs.camera.position.z);
+      stats?.update(dt);
       if (debugView?.visible) debugView.redraw();
     },
     () => {

@@ -15,7 +15,10 @@ export interface GameScene {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   sun: THREE.DirectionalLight;
-  /** Start the render loop. onFrame runs before each render with dt in seconds; onFirstFrame after the first render. */
+  /**
+   * Start the render loop. onFrame runs before each render with dt in seconds (renderer.info still holds the previous
+   * frame's totals); onFirstFrame after the first render.
+   */
   run(onFrame: (dt: number) => void, onFirstFrame: () => void): void;
 }
 
@@ -26,6 +29,8 @@ export function createScene(parent: HTMLElement): GameScene {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.6;
   renderer.autoClear = false;
+  // Count both passes (sky and world) per frame; run() resets the counters after onFrame.
+  renderer.info.autoReset = false;
   parent.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -73,6 +78,7 @@ export function createScene(parent: HTMLElement): GameScene {
       const dt = Math.min((now - last) / 1000, 0.1);
       last = now;
       onFrame(dt);
+      renderer.info.reset();
       skyCamera.quaternion.copy(camera.quaternion);
       renderer.clear();
       renderer.render(skyScene, skyCamera);

@@ -25,6 +25,8 @@ export interface UrlParams {
   fly: boolean;
   /** Ignore the save game. */
   fresh: boolean;
+  /** Dev stats readout: fps, draw calls, triangles. */
+  stats: boolean;
 }
 
 function num(v: string | null): number | undefined {
@@ -52,6 +54,7 @@ export function parseUrlParams(search: string): UrlParams {
     view: view === 'debug' || view === 'map' ? view : 'fp',
     fly: q.get('fly') === '1',
     fresh: q.get('fresh') === '1',
+    stats: q.get('stats') === '1',
   };
   const e = num(q.get('e'));
   const n = num(q.get('n'));
