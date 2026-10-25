@@ -70,7 +70,7 @@ interface Plume {
 }
 
 /** Deterministic hashed stream in [0, 1) from a string id. Not an RNG: the same id always gives the same values. */
-function hashStream(id: string): () => number {
+export function hashStream(id: string): () => number {
   let h = 2166136261;
   for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
   let s = h >>> 0;

@@ -6,7 +6,8 @@ import { TerrainChunks } from './render/terrainChunks';
 import { buildTerrainApron } from './render/terrainApron';
 import { createBandColorFn, createDamageColorFn } from './render/terrainColor';
 import { DistrictDamage } from './render/damage';
-import { renderLevelAt, showsDamage } from './render/tileReveal';
+import { GroundDetail } from './render/groundDetail';
+import { renderLevelAt, setGroundLoaded, showsDamage } from './render/tileReveal';
 import { buildLakeWater } from './render/lakeWater';
 import { Linework } from './render/linework';
 import { WoodsAndBuildings } from './render/woodsAndBuildings';
@@ -23,7 +24,8 @@ import { createOverheadView } from './ui/debug/overheadView';
 import { registerDistrictLayers } from './ui/debug/districtLayers';
 import { registerGroundLayer } from './ui/debug/groundLayers';
 import { GroundCache } from './world/ground';
-import { tilesAround } from './world/groundStreaming';
+import { GroundStreaming, tilesAround } from './world/groundStreaming';
+import { tileOf } from './world/terrain';
 import { fetchDistricts } from './world/districts';
 import { osgbToLocal } from './world/geo';
 import { createStatsReadout } from './ui/debug/stats';
@@ -38,6 +40,7 @@ import { EYE_HEIGHT_M, HeadBob } from './render/headBob';
 import { createPaperMap } from './ui/paperMap/paperMap';
 import { prepareMapData } from './ui/paperMap/mapData';
 import { Marks, type Leg } from './ui/paperMap/marks';
+import { applyDeltas, emptyGroundDeltas, registerGroundSection } from './save/groundDeltas';
 import { SaveGame, parseClockSave, parsePlayerSave, registerCoreSections } from './save/save';
 
 declare global {
@@ -103,6 +106,48 @@ async function main(): Promise<void> {
     woodsAndBuildings.group,
     damage.group,
   );
+
+  // Ground detail: the 3x3 tiles round the player (and any the scope asks for), on top of the saved changes.
+  const groundCache = new GroundCache();
+  const groundDeltas = emptyGroundDeltas();
+  registerGroundSection(save, groundDeltas);
+  const groundStreaming = new GroundStreaming();
+  const groundDetail = new GroundDetail(surface);
+  gs.scene.add(groundDetail.group);
+  const groundFailed = new Set<string>();
+  let groundBusy = false;
+  const tileKey = (x: number, y: number): string => {
+    const t = tileOf(x, y);
+    return `${t.i},${t.j}`;
+  };
+  let groundAt = tileKey(start.x, start.y);
+  const syncGround = async (x: number, y: number): Promise<void> => {
+    groundBusy = true;
+    try {
+      const want = groundStreaming.wanted(x, y, performance.now());
+      const have = new Set(groundDetail.loaded);
+      const fetched = await Promise.all(
+        want
+          .filter((t) => !have.has(t) && !groundFailed.has(t))
+          .map(async (t) => {
+            try {
+              return await groundCache.get(t);
+            } catch (err) {
+              groundFailed.add(t);
+              console.warn(`ground ${t} did not load`, err);
+              return undefined;
+            }
+          }),
+      );
+      for (const tile of fetched) if (tile) groundDetail.setTile(applyDeltas(tile, groundDeltas));
+      const keep = new Set(want);
+      for (const id of groundDetail.loaded) if (!keep.has(id)) groundDetail.unloadTile(id);
+      setGroundLoaded(groundDetail.loaded);
+    } finally {
+      groundBusy = false;
+    }
+  };
+  await syncGround(start.x, start.y);
   const look = new Look(gs.renderer.domElement, params.yaw ?? saved?.yaw ?? START.yaw, params.pitch ?? 0);
   const walkWorld = createWalkWorld({ surface, roads: buildRoadIndex(features.roads), lakes, gameDays: () => clock.gameDays });
   const player = createPlayer(start.x, start.y, look.yaw, walkWorld);
@@ -118,7 +163,7 @@ async function main(): Promise<void> {
   // Dev tool: only in dev builds or with ?view=debug. The hidden district damage is shown only here.
   const wantDebug = import.meta.env.DEV || params.view === 'debug';
   if (wantDebug) registerDistrictLayers(districts);
-  const groundLayer = wantDebug ? registerGroundLayer(new GroundCache()) : null;
+  const groundLayer = wantDebug ? registerGroundLayer(groundCache) : null;
   const debugView = wantDebug
     ? createOverheadView({ terrain, flood, lakes, gameDay: clock.gameDays }, () => ({
         x: gs.camera.position.x,
@@ -181,11 +226,11 @@ async function main(): Promise<void> {
     ? createStatsReadout(() => ({
         calls: gs.renderer.info.render.calls,
         triangles: gs.renderer.info.render.triangles,
-        extra: chunks.pending > 0 ? `${chunks.pending} chunks queued` : undefined,
+        extra: [chunks.pending > 0 ? `${chunks.pending} chunks queued` : '', `${groundDetail.batchCount} ground batches`].filter(Boolean).join(', '),
       }))
     : null;
 
-  window.__game = { params, clock, player, walkLog, terrain, surface, chunks, linework, woodsAndBuildings, damage, districts, look, ...gs };
+  window.__game = { params, clock, player, walkLog, terrain, surface, chunks, linework, woodsAndBuildings, damage, groundDetail, districts, look, ...gs };
 
   gs.run(
     (dt) => {
@@ -215,6 +260,12 @@ async function main(): Promise<void> {
       linework.update(gs.camera.position.x, -gs.camera.position.z);
       woodsAndBuildings.update(gs.camera.position.x, -gs.camera.position.z);
       damage.update(gs.camera, clock.gameDays, sunAltitude, performance.now() / 1000);
+      const hereKey = tileKey(gs.camera.position.x, -gs.camera.position.z);
+      if (!groundBusy && hereKey !== groundAt) {
+        groundAt = hereKey;
+        void syncGround(gs.camera.position.x, -gs.camera.position.z);
+      }
+      groundDetail.update(gs.camera);
       stats?.update(dt);
       if (debugView?.visible) debugView.redraw();
     },

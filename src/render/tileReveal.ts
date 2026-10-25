@@ -7,9 +7,17 @@ import { TILES_PER_SIDE, tileId, tileOf } from '../world/terrain';
  */
 export type TileRenderLevel = 'plain' | 'district' | 'ground';
 
-/** Render level of a tile by its id (tileId). Every tile is at district level until the scope task adds reveal. */
-export function tileRenderLevel(_tileId: string): TileRenderLevel {
-  return 'district';
+const groundLoaded = new Set<string>();
+
+/** Tell the renderer which tiles have their ground detail loaded; they render at 'ground' level, the rest at 'district'. */
+export function setGroundLoaded(ids: Iterable<string>): void {
+  groundLoaded.clear();
+  for (const id of ids) groundLoaded.add(id);
+}
+
+/** Render level of a tile by its id (tileId): 'ground' while its ground detail is loaded, else 'district'. */
+export function tileRenderLevel(id: string): TileRenderLevel {
+  return groundLoaded.has(id) ? 'ground' : 'district';
 }
 
 const TILE_IDS: string[] = [];
