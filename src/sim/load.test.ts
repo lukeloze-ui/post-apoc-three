@@ -5,7 +5,7 @@ import { bandEffects, defaultParty, loadBand, loadShare, partyPace } from './loa
 
 describe('catalog weights', () => {
   it('matches the spec', () => {
-    const kg = (id: string) => ITEMS[id].kg;
+    const kg = (id: string) => ITEMS[id]!.kg;
     expect(kg('camping_kit')).toBe(5.5);
     expect(kg('rifle_l403a1')).toBe(3.8);
     expect(kg('rifle_sa80a3')).toBe(4.9);

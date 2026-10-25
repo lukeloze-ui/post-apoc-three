@@ -12,13 +12,20 @@ import { fetchFeatures } from './world/features';
 import { GameClock, TIME_SCALE } from './sim/time';
 import { sunPosition } from './sim/sun';
 import { fetchTerrain, START } from './world/terrain';
-import { createSurface, surfaceHeight } from './world/surface';
+import { createSurface } from './world/surface';
 import { fetchFlood } from './world/flood';
 import { fetchLakes } from './world/lakes';
 import { createOverheadView } from './ui/debug/overheadView';
 import { osgbToLocal } from './world/geo';
 import { createStatsReadout } from './ui/debug/stats';
 import { clockLabel, createHud } from './ui/hud';
+import { createPlayerHud } from './ui/playerHud';
+import { WalkKeys } from './ui/keys';
+import { createPlayer } from './sim/player';
+import { WalkLog } from './sim/walkLog';
+import { createWalkWorld } from './sim/walkWorld';
+import { buildRoadIndex } from './world/roadIndex';
+import { EYE_HEIGHT_M, HeadBob } from './render/headBob';
 
 declare global {
   interface Window {
@@ -26,8 +33,6 @@ declare global {
     __game?: unknown;
   }
 }
-
-const EYE_HEIGHT = 1.65;
 
 async function main(): Promise<void> {
   const params = parseUrlParams(window.location.search);
@@ -65,8 +70,15 @@ async function main(): Promise<void> {
     woodsAndBuildings.group,
   );
   const look = new Look(gs.renderer.domElement, params.yaw ?? START.yaw, params.pitch ?? 0);
+  const walkWorld = createWalkWorld({ surface, roads: buildRoadIndex(features.roads), lakes, gameDays: () => clock.gameDays });
+  const player = createPlayer(start.x, start.y, look.yaw, walkWorld);
+  const walkLog = new WalkLog();
+  const keys = new WalkKeys();
+  const bob = new HeadBob();
+  const playerHud = params.fly ? null : createPlayerHud();
   // World frame: x east, z = -north, y up.
-  gs.camera.position.set(start.x, surfaceHeight(surface, start.x, start.y) + EYE_HEIGHT, -start.y);
+  gs.camera.position.set(start.x, player.z + EYE_HEIGHT_M, -start.y);
+  // The dev fly camera replaces walking with ?fly=1.
   const fly = params.fly ? new FlyCamera(look) : null;
 
   // Dev tool: only in dev builds or with ?view=debug.
@@ -95,13 +107,22 @@ async function main(): Promise<void> {
       }))
     : null;
 
-  window.__game = { params, clock, terrain, surface, chunks, linework, woodsAndBuildings, look, ...gs };
+  window.__game = { params, clock, player, walkLog, terrain, surface, chunks, linework, woodsAndBuildings, look, ...gs };
 
   gs.run(
     (dt) => {
-      clock.advance(dt * TIME_SCALE);
+      if (fly) {
+        clock.advance(dt * TIME_SCALE);
+        fly.update(gs.camera, dt);
+      } else {
+        // Modelled speed times TIME_SCALE on screen; the clock advances at the same scale, so game time per metre matches.
+        player.yaw = look.yaw;
+        clock.advance(player.step(dt * TIME_SCALE, keys.read(), walkWorld));
+        walkLog.record(clock.minutes, player.x, player.y);
+        gs.camera.position.set(player.x, player.z + EYE_HEIGHT_M + bob.update(dt, player.movedMs), -player.y);
+        playerHud?.update(player);
+      }
       updateSky();
-      fly?.update(gs.camera, dt);
       look.apply(gs.camera);
       chunks.update(gs.camera.position.x, -gs.camera.position.z);
       linework.update(gs.camera.position.x, -gs.camera.position.z);
