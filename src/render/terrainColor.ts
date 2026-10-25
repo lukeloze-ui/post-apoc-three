@@ -6,18 +6,23 @@ import {
   CRATER_SPOIL,
   GLASSY,
   GLASSY_SHEEN,
+  LANDSLIP_RAW,
+  LANDSLIP_SCAR,
   LANDCOVER_COLORS,
   LANDCOVER_DEFAULT,
   SCORCH,
   SCORCH_ASH,
   SCOUR_DARK,
   SCOUR_MUD,
+  SILT_FLAT,
+  SILT_SHEEN,
+  SOFT_PATCH,
   STRAND_DEBRIS,
   STRAND_MUD,
   STRAND_SILT,
   WRACK,
 } from '../world/palette';
-import type { StrikeZone } from '../world/districts';
+import { ringContains, type Landslip, type SiltFlat, type StrikeZone } from '../world/districts';
 import { spotGrid, type RoundSpot } from '../world/surface';
 import { heightAt, type Terrain } from '../world/terrain';
 import { renderLevelAt, showsDamage } from './tileReveal';
@@ -212,6 +217,7 @@ const STRIKE_EDGE = 0.18;
 /** Spoil colour reaches this many radii out from a crater's centre. */
 const SPOIL_REACH = 1.7;
 const SEED_STRIKE = 0x2545f491;
+const SEED_SILT = 0x3c6ef372;
 
 /**
  * Wraps a colour hook with the district damage of tiles at district render level or above: raw earth in crater
@@ -221,8 +227,21 @@ export function createDamageColorFn(
   base: TerrainColorFn,
   craters: readonly RoundSpot[],
   strikeZones: readonly StrikeZone[],
+  landslips: readonly Landslip[] = [],
+  siltFlats: readonly SiltFlat[] = [],
 ): TerrainColorFn {
   const grid = spotGrid(craters, SPOIL_REACH);
+  const slipGrid = spotGrid(landslips, 1);
+  const siltGrid = spotGrid(siltFlats, 1);
+  const softGrid = spotGrid(
+    siltFlats.flatMap((f) => f.softPatches),
+    1.3,
+  );
+  const scar = col(LANDSLIP_SCAR);
+  const raw = col(LANDSLIP_RAW);
+  const siltCol = col(SILT_FLAT);
+  const siltSheen = col(SILT_SHEEN);
+  const soft = col(SOFT_PATCH);
   const earth = col(CRATER_EARTH);
   const spoil = col(CRATER_SPOIL);
   const scorch = col(SCORCH);
@@ -239,6 +258,24 @@ export function createDamageColorFn(
       const m = valueNoise(x, y, 2.5, SEED_MOTTLE);
       if (u < 1) out.lerp(tmp.copy(earth).lerp(spoil, smooth01((u - 0.6) / 0.4) * 0.6), 0.85 - 0.25 * m);
       else out.lerp(spoil, (1 - smooth01((u - 1) / (SPOIL_REACH - 1))) * (0.75 - 0.3 * m));
+    }
+    for (const f of siltGrid.near(x, y)) {
+      if (Math.hypot(x - f.x, y - f.y) > f.r || !ringContains(f.ring, x, y)) continue;
+      // Smooth wet grey-brown, with broad pale streaks of sheen.
+      const m = valueNoise(x, y, 40, SEED_SILT);
+      tmp.copy(siltCol).lerp(siltSheen, smooth01((m - 0.5) / 0.3) * 0.55);
+      out.lerp(tmp, 0.88);
+    }
+    for (const p of softGrid.near(x, y)) {
+      const u = Math.hypot(x - p.x, y - p.y) / p.r + (valueNoise(x, y, 5, SEED_SILT ^ 0x1b873593) - 0.5) * 0.4;
+      if (u < 1.2) out.lerp(soft, 0.9 * (1 - smooth01((u - 0.7) / 0.5)));
+    }
+    for (const l of slipGrid.near(x, y)) {
+      if (Math.hypot(x - l.x, y - l.y) > l.r || !ringContains(l.ring, x, y)) continue;
+      // Raw brown earth, streaked darker where the ground is freshly torn.
+      const m = valueNoise(x, y, 6, SEED_SILT ^ 0x7feb352d);
+      tmp.copy(scar).lerp(raw, smooth01((m - 0.4) / 0.35));
+      out.lerp(tmp, 0.92);
     }
     for (const z of strikeZones) {
       const dx = x - z.x;

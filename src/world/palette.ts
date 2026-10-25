@@ -73,3 +73,10 @@ export const FIRE_GLOW = 0xff6a24;
 export const DEBRIS_TIMBER = [0x5a4430, 0x433224, 0x6e5a42] as const;
 export const DEBRIS_MUD = [0x5e5040, 0x8c7f68, 0x6b625a] as const;
 export const DEBRIS_WRACK = [0x2a2219, 0x4a3e30, 0x6b625a] as const;
+
+/** Blockers: raw landslip scar, wet silt flat with its sheen, and the darker soft patches in it. */
+export const LANDSLIP_SCAR = 0x7a5a3c;
+export const LANDSLIP_RAW = 0x5e4630;
+export const SILT_FLAT = 0x6e6558;
+export const SILT_SHEEN = 0x8c8a82;
+export const SOFT_PATCH = 0x3e362c;

@@ -6,6 +6,7 @@ import { TerrainChunks } from './render/terrainChunks';
 import { buildTerrainApron } from './render/terrainApron';
 import { createBandColorFn, createDamageColorFn } from './render/terrainColor';
 import { DistrictDamage } from './render/damage';
+import { BlockerDamage } from './render/blockers';
 import { GroundDetail } from './render/groundDetail';
 import { renderLevelAt, setGroundLoaded, showsDamage } from './render/tileReveal';
 import { buildLakeWater } from './render/lakeWater';
@@ -95,7 +96,7 @@ async function main(): Promise<void> {
         ? { x: saved.x, y: saved.y }
         : { x: START.x, y: START.y };
   const bandColorFn = createBandColorFn(terrain, flood);
-  const colorFn = createDamageColorFn(bandColorFn, craters, strikeZones);
+  const colorFn = createDamageColorFn(bandColorFn, craters, strikeZones, districts.tiles.flatMap((t) => t.landslips), districts.tiles.flatMap((t) => t.siltFlats));
   const chunks = new TerrainChunks(surface, {
     colorFn,
     surfaceFor: (x0, y0) => (showsDamage(renderLevelAt(x0 + 1, y0 + 1)) ? surface : plainSurface),
@@ -103,6 +104,7 @@ async function main(): Promise<void> {
   chunks.buildAll(start.x, start.y);
   const linework = new Linework(surface, features, flood, { districts, plainSurface });
   const damage = new DistrictDamage(surface, features, districts);
+  const blockers = new BlockerDamage(surface, features, districts);
   const deadBirds = new DeadBirds(surface, districts);
   const woodsAndBuildings = new WoodsAndBuildings(surface, features, flood);
   woodsAndBuildings.buildAll(start.x, start.y);
@@ -113,6 +115,7 @@ async function main(): Promise<void> {
     linework.group,
     woodsAndBuildings.group,
     damage.group,
+    blockers.group,
     deadBirds.group,
   );
 
@@ -337,6 +340,7 @@ async function main(): Promise<void> {
       chunks.update(gs.camera.position.x, -gs.camera.position.z);
       linework.update(gs.camera.position.x, -gs.camera.position.z);
       woodsAndBuildings.update(gs.camera.position.x, -gs.camera.position.z);
+      blockers.update(gs.camera);
       damage.update(gs.camera, clock.gameDays, sunAltitude, performance.now() / 1000);
       deadBirds.update(clock.gameDays);
       const hereKey = tileKey(gs.camera.position.x, -gs.camera.position.z);
