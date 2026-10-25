@@ -18,6 +18,8 @@ export interface PaperMapOptions {
   legLabel?: LegLabel;
   /** Real walked time ("1:31") for a leg id, shown after the plan; called on every draw. */
   legReal?: LegReal;
+  /** Faint hint layer, drawn under the marks and kept apart from them. */
+  hints?: MarksLayer;
   onChange?: (open: boolean) => void;
 }
 
@@ -45,7 +47,7 @@ export function createPaperMap(data: MapData, opts: PaperMapOptions = {}): Paper
   let scale = opts.scale ?? 0;
   const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 
-  const view = (): MapView => ({ width: canvas.width, height: canvas.height, cx, cy, scale, data, marks });
+  const view = (): MapView => ({ width: canvas.width, height: canvas.height, cx, cy, scale, data, marks, hints: opts.hints });
 
   const tools = opts.marks
     ? createMarksTools({ parent: root, canvas, marks: opts.marks, legLabel: opts.legLabel, legReal: opts.legReal, view, redraw: () => redraw() })

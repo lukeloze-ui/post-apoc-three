@@ -1,10 +1,10 @@
-// Usage: npm run shot -- '?view=fp' shots/name.png
+// Usage: npm run shot -- '?view=fp' shots/name.png  [optional JS to run in the page before the shot]
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { chromium } from 'playwright-core';
 import { createServer } from 'vite';
 
-const [query = '', out = 'shots/shot.png'] = process.argv.slice(2);
+const [query = '', out = 'shots/shot.png', script] = process.argv.slice(2);
 const outPath = resolve(out);
 mkdirSync(dirname(outPath), { recursive: true });
 
@@ -28,6 +28,7 @@ try {
   await page.waitForFunction(() => (window as unknown as { __ready?: boolean }).__ready === true, undefined, {
     timeout: 60_000,
   });
+  if (script) await page.evaluate(script);
   await page.screenshot({ path: outPath });
   console.log(`saved ${outPath}`);
 } catch (err) {

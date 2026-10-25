@@ -21,6 +21,8 @@ export interface MapView {
   data: MapData;
   /** The marks layer slot. */
   marks?: MarksLayer;
+  /** Faint hint dots, drawn under the marks. */
+  hints?: MarksLayer;
 }
 
 export function toPx(view: MapView, x: number, y: number): { px: number; py: number } {
@@ -468,6 +470,11 @@ export function renderMap(ctx: CanvasRenderingContext2D, view: MapView): void {
   ctx.lineWidth = 2;
   ctx.strokeRect(tl.px, tl.py, br.px - tl.px, br.py - tl.py);
 
+  if (view.hints) {
+    ctx.save();
+    view.hints(ctx, view);
+    ctx.restore();
+  }
   if (view.marks) {
     ctx.save();
     view.marks(ctx, view);

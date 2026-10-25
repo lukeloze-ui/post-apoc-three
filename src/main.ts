@@ -54,6 +54,9 @@ import { EYE_HEIGHT_M, HeadBob } from './render/headBob';
 import { createPaperMap } from './ui/paperMap/paperMap';
 import { prepareMapData } from './ui/paperMap/mapData';
 import { Marks, type Leg } from './ui/paperMap/marks';
+import { Hints, notableFeatures } from './sim/hints';
+import { createHintLayer } from './ui/paperMap/hintLayer';
+import { createMenu } from './ui/menu';
 import { createPackScreen } from './ui/packScreen';
 import { addToGround, applyDeltas, emptyGroundDeltas, registerGroundSection } from './save/groundDeltas';
 import { SaveGame, parseClockSave, parsePlayerSave, registerCoreSections } from './save/save';
@@ -346,8 +349,10 @@ async function main(): Promise<void> {
   const explicitView = params.e !== undefined && params.n !== undefined;
   const marks = new Marks();
   const legTracker = new LegTracker();
+  const hints = new Hints(notableFeatures(districts));
   const paperMap = createPaperMap(prepareMapData(terrain, features), {
     marks,
+    hints: createHintLayer(() => hints.all),
     legLabel: (pts) => legLabel(pts, (x, y) => heightAt(terrain, x, y), player.party),
     legReal: (id) => {
       const min = legTracker.realMinutes(id);
@@ -374,6 +379,21 @@ async function main(): Promise<void> {
   });
   if (params.view === 'pack') packScreen.setVisible(true);
 
+  // Settings (Esc): hint mode is a setting, off by default, saved. Hints stay out of the player's own marks.
+  const menu = createMenu({
+    hintMarks: false,
+    onHintMarks: (on) => {
+      hints.enabled = on;
+      save.markDirty();
+    },
+    canOpen: () => !paperMap.visible && !packScreen.visible,
+  });
+  reveal.subscribe((ids) => hints.tilesShown(ids));
+  hints.subscribe(() => {
+    save.markDirty();
+    paperMap.redraw();
+  });
+
   // The dev fly camera does not move the player, so it keeps its own hands off the saved position.
   if (!fly) {
     registerCoreSections(save, {
@@ -383,6 +403,15 @@ async function main(): Promise<void> {
       overridden: { player: explicitView || params.yaw !== undefined, clock: params.t !== undefined },
     });
   }
+  save.registerSection(
+    'settings',
+    () => ({ hintMarks: hints.enabled }),
+    (d) => {
+      hints.enabled = (d as { hintMarks?: unknown } | null)?.hintMarks === true;
+      menu.setHintMarks(hints.enabled);
+    },
+  );
+  save.registerSection('hints', () => hints.serialize(), (d) => hints.load(d));
   save.registerSection('marks', () => marks.serialize(), (d) => marks.load(d));
   marks.subscribe(() => save.markDirty());
   save.registerSection('legTimes', () => legTracker.serialize(), (d) => legTracker.load(d));
@@ -400,11 +429,11 @@ async function main(): Promise<void> {
       }))
     : null;
 
-  window.__game = { params, clock, player, walkLog, terrain, surface, chunks, linework, woodsAndBuildings, damage, groundDetail, districts, look, scope, reveal, ...gs };
+  window.__game = { params, clock, player, walkLog, terrain, surface, chunks, linework, woodsAndBuildings, damage, groundDetail, districts, look, scope, reveal, hints, ...gs };
 
   gs.run(
     (dt) => {
-      if (paperMap.visible || packScreen.visible) {
+      if (paperMap.visible || packScreen.visible || menu.visible) {
         pressedE = false;
         scope.update(-1);
         scopeOverlay.update(null, 0);
@@ -446,6 +475,7 @@ async function main(): Promise<void> {
       scopeOverlay.update(scope.visibleKind, scope.raise);
       look.apply(gs.camera);
       reveal.visit(gs.camera.position.x, -gs.camera.position.z);
+      hints.walk(gs.camera.position.x, -gs.camera.position.z);
       reveal.update(
         dt,
         scope.scoped
