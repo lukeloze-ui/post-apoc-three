@@ -39,7 +39,14 @@ export interface Strike {
   target?: number;
 }
 
-export type Mark = Stroke | Note | Cross | Strike;
+/** A planned leg: waypoints the player clicked, drawn as a pencil line with ticks and a time label. */
+export interface Leg {
+  kind: 'leg';
+  id: number;
+  pts: Pt[];
+}
+
+export type Mark = Stroke | Note | Cross | Strike | Leg;
 
 /** How many actions undo can go back. */
 export const UNDO_LIMIT = 20;
@@ -174,6 +181,11 @@ export class Marks {
     return this.add(m);
   }
 
+  addLeg(pts: readonly Pt[]): Leg | undefined {
+    if (pts.length < 2) return undefined;
+    return this.add({ kind: 'leg', id: this.nextId, pts: pts.map((p) => ({ x: p.x, y: p.y })) });
+  }
+
   addNote(x: number, y: number, text: string): Note | undefined {
     const t = text.trim().slice(0, MAX_NOTE_LENGTH);
     if (t === '') return undefined;
@@ -198,7 +210,7 @@ export class Marks {
     for (const m of this.items) {
       if (m.kind === 'strike') continue;
       let d: number;
-      if (m.kind === 'stroke') {
+      if (m.kind === 'stroke' || m.kind === 'leg') {
         d = Infinity;
         for (let i = 0; i + 1 < m.pts.length; i++) d = Math.min(d, distToSegment(p, m.pts[i]!, m.pts[i + 1]!));
       } else {
@@ -308,6 +320,10 @@ function parseMark(raw: unknown): Mark | undefined {
     case 'stroke': {
       if (!Array.isArray(m.pts) || m.pts.length < 2 || !m.pts.every(isPt)) return undefined;
       return { kind: 'stroke', id, pts: m.pts.map((p: Pt) => ({ x: p.x, y: p.y })) };
+    }
+    case 'leg': {
+      if (!Array.isArray(m.pts) || m.pts.length < 2 || !m.pts.every(isPt)) return undefined;
+      return { kind: 'leg', id, pts: m.pts.map((p: Pt) => ({ x: p.x, y: p.y })) };
     }
     case 'note':
       if (!isNum(m.x) || !isNum(m.y) || typeof m.text !== 'string' || m.text === '') return undefined;

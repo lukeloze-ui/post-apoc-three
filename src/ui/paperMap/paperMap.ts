@@ -3,6 +3,7 @@
 import { MAX_MAP_SCALE, MIN_MAP_SCALE, renderMap, toLocal, type MapView, type MarksLayer } from './renderMap';
 import type { MapData } from './mapData';
 import type { Marks } from './marks';
+import type { LegLabel } from './drawMarks';
 import { createMarksTools } from './marksTools';
 
 export interface PaperMapOptions {
@@ -13,6 +14,8 @@ export interface PaperMapOptions {
   parent?: HTMLElement;
   /** The player's pencil marks. With these, the map shows the tool palette. */
   marks?: Marks;
+  /** Text beside each planned leg (distance, climb, plan time); called on every draw. */
+  legLabel?: LegLabel;
   onChange?: (open: boolean) => void;
 }
 
@@ -43,7 +46,7 @@ export function createPaperMap(data: MapData, opts: PaperMapOptions = {}): Paper
   const view = (): MapView => ({ width: canvas.width, height: canvas.height, cx, cy, scale, data, marks });
 
   const tools = opts.marks
-    ? createMarksTools({ parent: root, canvas, marks: opts.marks, view, redraw: () => redraw() })
+    ? createMarksTools({ parent: root, canvas, marks: opts.marks, legLabel: opts.legLabel, view, redraw: () => redraw() })
     : undefined;
   if (tools) marks = tools.layer;
 

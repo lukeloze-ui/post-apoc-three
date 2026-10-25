@@ -11,7 +11,8 @@ import { WoodsAndBuildings } from './render/woodsAndBuildings';
 import { fetchFeatures } from './world/features';
 import { GameClock, TIME_SCALE } from './sim/time';
 import { sunPosition } from './sim/sun';
-import { fetchTerrain, START } from './world/terrain';
+import { legLabel } from './sim/naismith';
+import { fetchTerrain, heightAt, START } from './world/terrain';
 import { createSurface } from './world/surface';
 import { fetchFlood } from './world/flood';
 import { fetchLakes } from './world/lakes';
@@ -116,6 +117,7 @@ async function main(): Promise<void> {
   const marks = new Marks();
   const paperMap = createPaperMap(prepareMapData(terrain, features), {
     marks,
+    legLabel: (pts) => legLabel(pts, (x, y) => heightAt(terrain, x, y), player.party),
     centre: explicitView ? start : undefined,
     scale: explicitView ? 0.25 : undefined,
   });

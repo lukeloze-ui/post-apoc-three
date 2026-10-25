@@ -5,6 +5,9 @@ import { toPx, type MapView, type MarksLayer } from './renderMap';
 
 const PENCIL = '#4b4c52';
 const WOBBLE_PX = 0.7;
+const LABEL_FONT = '13px "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
+/** Text beside a leg, computed on every draw so it follows the pack. */
+export type LegLabel = (pts: readonly Pt[]) => string;
 export const NOTE_FONT = '15px "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
 
 /** Deterministic value in -1..1. */
@@ -57,8 +60,83 @@ function pencilLine(ctx: CanvasRenderingContext2D, view: MapView, id: number, pt
   ctx.globalAlpha = 1;
 }
 
-function drawMark(ctx: CanvasRenderingContext2D, view: MapView, m: Mark): void {
+/** Metres between tick marks along a leg; ticks are skipped when they would be closer than TICK_MIN_PX. */
+const TICK_M = 250;
+const TICK_MIN_PX = 8;
+
+function drawLeg(ctx: CanvasRenderingContext2D, view: MapView, m: Mark & { kind: 'leg' }, label?: string): void {
+  const pts = m.pts;
+  if (pts.length >= 2) pencilLine(ctx, view, m.id, pts, 2.2);
+  ctx.strokeStyle = PENCIL;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 1.6;
+  ctx.globalAlpha = 0.9;
+  const tick = (a: Pt, b: Pt, t: number, half: number): void => {
+    const c = toPx(view, a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+    const q = toPx(view, b.x, b.y);
+    const p = toPx(view, a.x, a.y);
+    const len = Math.hypot(q.px - p.px, q.py - p.py) || 1;
+    const nx = -(q.py - p.py) / len;
+    const ny = (q.px - p.px) / len;
+    ctx.beginPath();
+    ctx.moveTo(c.px - nx * half, c.py - ny * half);
+    ctx.lineTo(c.px + nx * half, c.py + ny * half);
+    ctx.stroke();
+  };
+  let along = 0;
+  let nextTick = TICK_M;
+  const spaced = TICK_M * view.scale >= TICK_MIN_PX;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i]!;
+    const b = pts[i + 1]!;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    tick(a, b, 0, 6);
+    while (spaced && len > 0 && nextTick <= along + len) {
+      tick(a, b, (nextTick - along) / len, 3.5);
+      nextTick += TICK_M;
+    }
+    along += len;
+  }
+  if (pts.length >= 2) tick(pts[pts.length - 2]!, pts[pts.length - 1]!, 1, 6);
+  else {
+    const c = toPx(view, pts[0]!.x, pts[0]!.y);
+    ctx.beginPath();
+    ctx.arc(c.px, c.py, 3, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  if (label && pts.length >= 2) {
+    // Beside the point halfway along the leg.
+    let half = 0;
+    for (let i = 0; i + 1 < pts.length; i++) half += Math.hypot(pts[i + 1]!.x - pts[i]!.x, pts[i + 1]!.y - pts[i]!.y);
+    half /= 2;
+    let at = pts[0]!;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = pts[i]!;
+      const b = pts[i + 1]!;
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (half <= len) {
+        const t = len === 0 ? 0 : half / len;
+        at = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+        break;
+      }
+      half -= len;
+    }
+    const c = toPx(view, at.x, at.y);
+    ctx.font = LABEL_FONT;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = PENCIL;
+    ctx.globalAlpha = 0.9;
+    ctx.fillText(label, c.px + 10, c.py - 8);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawMark(ctx: CanvasRenderingContext2D, view: MapView, m: Mark, legLabel?: LegLabel): void {
   switch (m.kind) {
+    case 'leg':
+      drawLeg(ctx, view, m, legLabel?.(m.pts));
+      break;
     case 'stroke':
       pencilLine(ctx, view, m.id, m.pts, 2.2);
       break;
@@ -103,9 +181,9 @@ function drawMark(ctx: CanvasRenderingContext2D, view: MapView, m: Mark): void {
 }
 
 /** The marks layer for `renderMap`: over the map, under the scale bar and names. `preview` is drawn last (the stroke in progress). */
-export function createMarksLayer(marks: Marks, preview?: () => Mark | undefined): MarksLayer {
+export function createMarksLayer(marks: Marks, preview?: () => Mark | undefined, legLabel?: LegLabel): MarksLayer {
   return (ctx, view) => {
-    for (const m of marks.all) drawMark(ctx, view, m);
+    for (const m of marks.all) drawMark(ctx, view, m, legLabel);
     const p = preview?.();
     if (p) drawMark(ctx, view, p);
   };

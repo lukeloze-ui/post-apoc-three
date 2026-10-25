@@ -1,16 +1,17 @@
 // The map's tool palette and pointer handling: pencil, note, cross-out, eraser, plus a hand for panning and undo.
 // DOM only; the marks themselves live in marks.ts and are drawn by drawMarks.ts.
-import { NOTE_FONT, createMarksLayer } from './drawMarks';
+import { NOTE_FONT, createMarksLayer, type LegLabel } from './drawMarks';
 import type { Mark, Marks, Pt } from './marks';
 import { toLocal, type MapView, type MarksLayer } from './renderMap';
 
-export type Tool = 'hand' | 'pencil' | 'note' | 'cross' | 'eraser';
+export type Tool = 'hand' | 'pencil' | 'note' | 'cross' | 'leg' | 'eraser';
 
 const TOOLS: Array<{ tool: Tool; label: string; title: string; cursor: string }> = [
   { tool: 'hand', label: 'Hand', title: 'Pan the map (drag)', cursor: 'grab' },
   { tool: 'pencil', label: 'Pencil', title: 'Draw (drag)', cursor: 'crosshair' },
   { tool: 'note', label: 'Note', title: 'Click to write a note', cursor: 'text' },
   { tool: 'cross', label: 'Cross out', title: 'Click for an X, drag to strike through', cursor: 'crosshair' },
+  { tool: 'leg', label: 'Leg', title: 'Click waypoints, double-click to end a planned leg', cursor: 'crosshair' },
   { tool: 'eraser', label: 'Eraser', title: 'Rub out pencil and notes (drag)', cursor: 'cell' },
 ];
 
@@ -20,6 +21,8 @@ const ERASER_PX = 12;
 const CROSS_HIT_PX = 14;
 /** A cross-out drag shorter than this is a click. */
 const CLICK_PX = 6;
+/** Two leg clicks within this many ms and CLICK_PX of each other are a double-click. */
+const DOUBLE_CLICK_MS = 400;
 
 export interface MarksTools {
   readonly tool: Tool;
@@ -41,6 +44,8 @@ export interface MarksToolsOptions {
   marks: Marks;
   view(): MapView;
   redraw(): void;
+  /** Text beside each leg; called on every draw. */
+  legLabel?: LegLabel;
 }
 
 interface NoteBox {
@@ -53,17 +58,20 @@ export function createMarksTools(o: MarksToolsOptions): MarksTools {
   let tool: Tool = 'hand';
   let stroke: Pt[] | undefined;
   let cross: { a: Pt; px: number; py: number; b: Pt } | undefined;
+  let leg: Pt[] | undefined;
+  let lastLegClick = { t: 0, px: 0, py: 0 };
   let erasing = false;
   let box: NoteBox | undefined;
 
   const preview = (): Mark | undefined => {
+    if (leg) return { kind: 'leg', id: 0, pts: leg };
     if (stroke && stroke.length >= 2) return { kind: 'stroke', id: 0, pts: stroke };
     if (cross && Math.hypot(cross.b.x - cross.a.x, cross.b.y - cross.a.y) * o.view().scale > CLICK_PX) {
       return { kind: 'strike', id: 0, a: cross.a, b: cross.b };
     }
     return undefined;
   };
-  const layer = createMarksLayer(marks, preview);
+  const layer = createMarksLayer(marks, preview, o.legLabel);
 
   // ---- palette ----
   const bar = document.createElement('div');
@@ -102,7 +110,15 @@ export function createMarksTools(o: MarksToolsOptions): MarksTools {
   marks.subscribe(syncUndo);
   syncUndo();
 
+  function finishLeg(): void {
+    const pts = leg;
+    leg = undefined;
+    if (pts) marks.addLeg(pts);
+    o.redraw();
+  }
+
   function setTool(t: Tool): void {
+    finishLeg();
     cancel();
     tool = t;
     for (const [k, b] of buttons) b.style.background = k === t ? '#c9c2ad' : '#f4eed9';
@@ -157,8 +173,9 @@ export function createMarksTools(o: MarksToolsOptions): MarksTools {
   }
 
   function cancel(): void {
-    if (stroke || cross || erasing) {
+    if (stroke || cross || erasing || leg) {
       stroke = undefined;
+      leg = undefined;
       cross = undefined;
       if (erasing) marks.endGesture();
       erasing = false;
@@ -191,6 +208,17 @@ export function createMarksTools(o: MarksToolsOptions): MarksTools {
         stroke = [p];
       } else if (tool === 'note') {
         openNote(p, px, py);
+      } else if (tool === 'leg') {
+        const now = performance.now();
+        const dbl = now - lastLegClick.t < DOUBLE_CLICK_MS && Math.hypot(px - lastLegClick.px, py - lastLegClick.py) <= CLICK_PX;
+        lastLegClick = { t: now, px, py };
+        if (dbl && leg) {
+          finishLeg();
+          lastLegClick.t = 0;
+        } else {
+          (leg ??= []).push(p);
+          o.redraw();
+        }
       } else if (tool === 'cross') {
         cross = { a: p, px, py, b: p };
       } else {
