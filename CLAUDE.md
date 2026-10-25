@@ -45,7 +45,7 @@ Parsed by `src/urlParams.ts`:
 - `e`, `n`: OSGB metres (easting, northing).
 - `yaw`, `pitch`: degrees. Yaw 0 is north, clockwise.
 - `t`: game time, e.g. `d1-07:00`.
-- `view`: `fp`, `debug` or `map`.
+- `view`: `fp`, `debug` or `map`. `view=debug` opens the overhead debug view (`src/ui/debug/overheadView.ts`), a dev tool available only when `import.meta.env.DEV` is true or with `?view=debug`. **F2** toggles it. Wheel zooms, drag pans; layers register with `registerDebugLayer`.
 - `fly=1`: dev fly camera.
 - `fresh=1`: ignore the save.
 
