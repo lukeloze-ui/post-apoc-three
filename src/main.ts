@@ -26,6 +26,8 @@ import { WalkLog } from './sim/walkLog';
 import { createWalkWorld } from './sim/walkWorld';
 import { buildRoadIndex } from './world/roadIndex';
 import { EYE_HEIGHT_M, HeadBob } from './render/headBob';
+import { createPaperMap } from './ui/paperMap/paperMap';
+import { prepareMapData } from './ui/paperMap/mapData';
 
 declare global {
   interface Window {
@@ -99,6 +101,15 @@ async function main(): Promise<void> {
     });
   }
 
+  // The paper map shows the world as it was: terrain and features only. While it is open the player
+  // cannot walk and the clock is paused. It opens centred on the patch, never on the player.
+  const explicitView = params.e !== undefined && params.n !== undefined;
+  const paperMap = createPaperMap(prepareMapData(terrain, features), {
+    centre: explicitView ? start : undefined,
+    scale: explicitView ? 0.25 : undefined,
+  });
+  if (params.view === 'map') paperMap.setVisible(true);
+
   const stats = params.stats
     ? createStatsReadout(() => ({
         calls: gs.renderer.info.render.calls,
@@ -111,6 +122,10 @@ async function main(): Promise<void> {
 
   gs.run(
     (dt) => {
+      if (paperMap.visible) {
+        look.apply(gs.camera);
+        return;
+      }
       if (fly) {
         clock.advance(dt * TIME_SCALE);
         fly.update(gs.camera, dt);

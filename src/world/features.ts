@@ -65,8 +65,19 @@ export interface BuildingFeature {
   ring: Pt[];
 }
 
+export type SettlementKind = 'town' | 'village' | 'hamlet' | 'camp';
+
+export interface SettlementFeature {
+  name: string;
+  x: number;
+  y: number;
+  kind: SettlementKind;
+}
+
 /** The parts of features.json that the world renderer draws. */
 export interface Features {
+  /** Place names for the paper map. Absent in hand-built test data. */
+  settlements?: SettlementFeature[];
   roads: RoadFeature[];
   rail: RailFeature[];
   rivers: RiverFeature[];
