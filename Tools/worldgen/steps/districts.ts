@@ -485,7 +485,7 @@ export const districtsStep: Step = {
         'Damage: each bridge falls with a logistic probability in depth below the mark (about 0.1 above, 0.9 at 40 m below, ' +
         '0.95 deeper, plus a small bump near the storm centre); survivors stand. Each road segment is blocked with a probability ' +
         `by band and woods (within ${WOOD_NEAR_M} m of a wood counts as beside it): see Tools/worldgen/rules/damage.ts. ` +
-        'Rolled once with a fixed seed. Tile lists are empty.',
+        'Rolled once with a fixed seed. The tile lists are filled in by the craters step.',
       storm: { worstSide: STORM.worstSide, centre: { e: STORM.e, n: STORM.n, x: r1(centre.x), y: r1(centre.y) }, why: STORM.why },
       survivors: SURVIVORS.map((s) => ({ name: s.name, bridgeIds: [...s.bridgeIds], why: s.why })),
       bridges,
@@ -502,7 +502,7 @@ export const districtsStep: Step = {
 };
 
 /** JSON with one array element per line, so diffs stay readable. */
-function serialise(d: Districts): string {
+export function serialise(d: Districts): string {
   const lines = Object.entries(d).map(([k, v]) => {
     if (Array.isArray(v) && v.length > 0) return `  ${JSON.stringify(k)}: [\n${v.map((e) => '    ' + JSON.stringify(e)).join(',\n')}\n  ]`;
     return `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`;

@@ -117,14 +117,24 @@ export interface StrikeZone extends Spot {
   kind: 'burning' | 'glassy';
 }
 
+/** Days are GameClock.gameDays: days since d0-00:00. */
 export interface Fire extends Spot {
-  /** Game day (GameClock.gameDays) it burns out. */
-  untilDay: number;
+  /** Burning from this game day. */
+  fromDay: number;
+  /** Burnt out by this game day. */
+  toDay: number;
 }
 
-/** Valley floors, days 1 to 5 only. */
+/** First and last game day gas can lie in a hollow (SX 02: days 1 to 5 only). */
+export const GAS_FROM_DAY = 1;
+export const GAS_TO_DAY = 5;
+
+/** Valley floors, days 1 to 5 only. x, y, r are the centroid and a radius that holds every cell. */
 export interface GasHollow extends Spot {
-  untilDay: number;
+  fromDay: number;
+  toDay: number;
+  /** The 50 m terrain cells it fills, as [column, row] from the patch's SW corner; all inside the tile. */
+  cells: [number, number][];
 }
 
 export interface WrackDam extends Spot {
@@ -144,8 +154,20 @@ export interface FallenWood {
   woodId: string;
 }
 
-export type AnimalKind = 'rabbit' | 'pony' | 'roeDeer' | 'redDeer' | 'sheep';
-export const ANIMAL_KINDS: readonly AnimalKind[] = ['rabbit', 'pony', 'roeDeer', 'redDeer', 'sheep'];
+export type AnimalKind = 'rabbit' | 'pony' | 'roeDeer' | 'redDeer' | 'sheep' | 'pheasant' | 'pigeon' | 'gull' | 'crow';
+export const ANIMAL_KINDS: readonly AnimalKind[] = [
+  'rabbit',
+  'pony',
+  'roeDeer',
+  'redDeer',
+  'sheep',
+  'pheasant',
+  'pigeon',
+  'gull',
+  'crow',
+];
+/** Birds fly over the damage; every other kind walks, and none of those live in the scour zone at the start. */
+export const BIRD_KINDS: readonly AnimalKind[] = ['pheasant', 'pigeon', 'gull', 'crow'];
 
 export interface DistrictTile {
   id: string;
@@ -297,8 +319,22 @@ export function validateDistricts(d: unknown, features?: Features): string[] {
         v.forEach((s: unknown, n) => {
           if (!isObj(s) || !isStr(s.id) || !isNum(s.x) || !isNum(s.y) || !isNum(s.r) || s.r <= 0) {
             errs.push(`${at}.${list}[${n}]: bad spot`);
-          } else if (s.x < i * TILE_M || s.x > (i + 1) * TILE_M || s.y < j * TILE_M || s.y > (j + 1) * TILE_M) {
-            errs.push(`${at}.${list}[${n}]: outside the tile`);
+            return;
+          }
+          const sp = `${at}.${list}[${n}]`;
+          if (s.x < i * TILE_M || s.x > (i + 1) * TILE_M || s.y < j * TILE_M || s.y > (j + 1) * TILE_M) {
+            errs.push(`${sp}: outside the tile`);
+          }
+          if (list === 'craters' && typeof s.water !== 'boolean') errs.push(`${sp}.water: not a boolean`);
+          if (list === 'strikeZones' && s.kind !== 'burning' && s.kind !== 'glassy') errs.push(`${sp}.kind: bad`);
+          if (list === 'fires' || list === 'gasHollows') {
+            if (!isNum(s.fromDay) || !isNum(s.toDay) || s.toDay <= s.fromDay) errs.push(`${sp}: bad fromDay/toDay`);
+            else if (list === 'gasHollows' && (s.fromDay < GAS_FROM_DAY || s.toDay > GAS_TO_DAY)) {
+              errs.push(`${sp}: gas outside days ${GAS_FROM_DAY} to ${GAS_TO_DAY}`);
+            }
+          }
+          if (list === 'gasHollows' && (!Array.isArray(s.cells) || s.cells.length === 0 || !s.cells.every(isPt))) {
+            errs.push(`${sp}.cells: need a list of [column, row]`);
           }
         });
       }
