@@ -1,24 +1,10 @@
 import type { Player } from '../sim/player';
-import type { GroundType } from '../sim/walking';
+import { GROUND_LABEL } from '../world/conditions';
 
-const GROUND_LABEL: Record<GroundType, string> = {
-  road: 'road',
-  track: 'track',
-  path: 'path',
-  moor_grass: 'moor grass',
-  field: 'field',
-  heather: 'heather',
-  bog: 'bog',
-  rock: 'rock',
-  wood: 'woodland',
-  debris: 'debris',
-  rubble: 'rubble',
-};
-
-/** The HUD text for the player: pace, ground, and each person's load band and stamina. */
+/** The HUD text for the player: pace, the ground's condition, and each person's load band and stamina. */
 export function playerHudLines(p: Player): string[] {
   const pace = p.resting ? 'resting' : `${(p.paceMs * 3.6).toFixed(1)} km/h`;
-  const lines = [`${pace}  on ${GROUND_LABEL[p.groundType]}`];
+  const lines = [`${pace}  on ${p.conditions?.explanation ?? GROUND_LABEL[p.groundType]}`];
   for (const s of p.status()) {
     lines.push(`${s.name}  load ${s.band}  stamina ${Math.round(s.stamina * 100)}%`);
   }

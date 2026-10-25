@@ -36,6 +36,7 @@ import { WalkKeys } from './ui/keys';
 import { createPlayer } from './sim/player';
 import { WalkLog } from './sim/walkLog';
 import { createWalkWorld } from './sim/walkWorld';
+import { buildDamageIndex, createDebrisIndex } from './world/conditions';
 import { buildRoadIndex } from './world/roadIndex';
 import { EYE_HEIGHT_M, HeadBob } from './render/headBob';
 import { createPaperMap } from './ui/paperMap/paperMap';
@@ -116,6 +117,7 @@ async function main(): Promise<void> {
   registerGroundSection(save, groundDeltas);
   const groundStreaming = new GroundStreaming();
   const groundDetail = new GroundDetail(surface);
+  const debris = createDebrisIndex();
   gs.scene.add(groundDetail.group);
   const groundFailed = new Set<string>();
   /** The loaded tiles as they are in the files; the player's changes are in groundDeltas. */
@@ -152,12 +154,14 @@ async function main(): Promise<void> {
         const spots = loaded.objects.filter((o) => o.kind === 'crater').map((o) => ({ x: o.x, y: o.y, r: o.size / 2 }));
         const changed = tileCraters.setTile(loaded.tile, spots);
         groundDetail.setTile(loaded);
+        debris.setTile(loaded.tile, loaded.objects);
         if (changed) chunks.invalidate(changed);
       }
       const keep = new Set(want);
       for (const id of groundDetail.loaded) {
         if (keep.has(id)) continue;
         groundDetail.unloadTile(id);
+        debris.removeTile(id);
         baseTiles.delete(id);
         const changed = tileCraters.removeTile(id);
         if (changed) chunks.invalidate(changed);
@@ -169,7 +173,14 @@ async function main(): Promise<void> {
   };
   await syncGround(start.x, start.y);
   const look = new Look(gs.renderer.domElement, params.yaw ?? saved?.yaw ?? START.yaw, params.pitch ?? 0);
-  const walkWorld = createWalkWorld({ surface, roads: buildRoadIndex(features.roads), lakes, gameDays: () => clock.gameDays });
+  const walkWorld = createWalkWorld({
+    surface,
+    roads: buildRoadIndex(features.roads),
+    lakes,
+    gameDays: () => clock.gameDays,
+    damage: buildDamageIndex(districts, features.woods, terrain.meta.cellM),
+    debris,
+  });
   const player = createPlayer(start.x, start.y, look.yaw, walkWorld);
   const walkLog = new WalkLog();
   const keys = new WalkKeys();

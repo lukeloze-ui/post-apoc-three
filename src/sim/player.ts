@@ -2,6 +2,7 @@
 // Local frame as in world/terrain.ts: x metres east, y metres north. Yaw 0 is north, clockwise, in degrees.
 import { defaultParty, loadBand, loadShare, type LoadBand, type Party } from './load';
 import { carriedKg } from './pack';
+import type { Conditions } from '../world/conditions';
 import { newWalkState, speedMs, stepWalk, RECOVER_PER_HOUR, type GroundType, type WalkState } from './walking';
 
 /** What the player needs to know about the ground. The game builds one over the real surface; tests use a fake. */
@@ -15,6 +16,8 @@ export interface WalkWorld {
   groundTypeAt(x: number, y: number): GroundType;
   /** Depth of standing water, metres (0 or less when dry). */
   waterDepthAt?(x: number, y: number): number;
+  /** Damage blockers and ground debris merged with the ground type (world/conditions.ts), for the current day. */
+  conditionsAt?(x: number, y: number): Conditions;
 }
 
 /** WASD as -1..1 axes: forward is +1 for W, right is +1 for D. */
@@ -52,6 +55,10 @@ export class Player {
   /** Ground under the player and the grade along the direction of motion (facing when standing still). */
   groundType: GroundType = 'field';
   grade = 0;
+  /** Conditions here when the world provides them; speedFactor and effortFactor feed the walking model. */
+  conditions: Conditions | null = null;
+  speedFactor = 1;
+  effortFactor = 1;
   /** Modelled pace here, metres per game second; 0 while resting. */
   paceMs = 0;
   /** Metres per game second actually covered in the last step. */
@@ -85,11 +92,14 @@ export class Player {
   sense(world: WalkWorld, dx: number, dy: number): void {
     const b = GRADE_HALF_BASELINE_M;
     this.z = world.heightAt(this.x, this.y);
-    this.groundType = world.groundTypeAt(this.x, this.y);
+    this.conditions = world.conditionsAt?.(this.x, this.y) ?? null;
+    this.groundType = this.conditions?.groundType ?? world.groundTypeAt(this.x, this.y);
+    this.speedFactor = this.conditions?.speedFactor ?? 1;
+    this.effortFactor = this.conditions?.effortFactor ?? 1;
     const rise = world.heightAt(this.x + dx * b, this.y + dy * b) - world.heightAt(this.x - dx * b, this.y - dy * b);
     this.grade = clamp(rise / (2 * b), -MAX_GRADE, MAX_GRADE);
     this.resting = this.walk.restLeftSec > 0;
-    this.paceMs = this.resting ? 0 : speedMs(this.groundType, this.grade, this.party, 1, this.walk.stamina);
+    this.paceMs = this.resting ? 0 : speedMs(this.groundType, this.grade, this.party, this.speedFactor, this.walk.stamina);
   }
 
   /**
@@ -145,7 +155,7 @@ export class Player {
       return dt;
     }
 
-    const metres = stepWalk(this.walk, this.party, this.groundType, this.grade, dt);
+    const metres = stepWalk(this.walk, this.party, this.groundType, this.grade, dt, this.speedFactor, this.effortFactor);
     const x0 = this.x;
     const y0 = this.y;
     this.moveTo(x0 + dx * metres, y0 + dy * metres, world);
@@ -154,15 +164,18 @@ export class Player {
     return dt;
   }
 
-  /** Move to (nx, ny) kept inside the patch; if deep water is in the way, slide along one axis or stay put. */
+  /** Move to (nx, ny) kept inside the patch; if deep water or impassable ground is in the way, slide along one axis or stay put. */
   private moveTo(nx: number, ny: number, world: WalkWorld): void {
     const cx = clamp(nx, EDGE_MARGIN_M, world.sizeX - EDGE_MARGIN_M);
     const cy = clamp(ny, EDGE_MARGIN_M, world.sizeY - EDGE_MARGIN_M);
     const here = world.waterDepthAt?.(this.x, this.y) ?? 0;
-    // Only refuse water that is deep and no shallower than where we already stand, so a player caught in it can wade out.
+    const stuck = this.conditions?.hazards.impassable ?? false;
+    // Only refuse water that is deep and no shallower than where we already stand, so a player caught in it can wade out;
+    // likewise impassable ground only stops a player who is not already standing on it.
     const open = (x: number, y: number): boolean => {
       const d = world.waterDepthAt?.(x, y) ?? 0;
-      return d <= MAX_WADE_DEPTH_M || d < here;
+      if (d > MAX_WADE_DEPTH_M && d >= here) return false;
+      return stuck || !(world.conditionsAt?.(x, y).hazards.impassable ?? false);
     };
     if (open(cx, cy)) {
       this.x = cx;
