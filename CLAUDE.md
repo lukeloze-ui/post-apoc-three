@@ -38,6 +38,8 @@ Worldgen has two stages:
 
 **RNG rule:** the only RNG is `mulberry32` (`Tools/worldgen/rng.ts`), and only inside `Tools/worldgen`. Each build step makes its own generator from a fixed per-step seed constant, so changing one step never reshuffles another. Code under `src/` never uses `Math.random` for world content.
 
+**Districts** (`public/world/districts.json`, types, validator and loader in `src/world/districts.ts`, built by `Tools/worldgen/steps/districts.ts`): the hidden 1 km damage layer, loaded but never shown to the player. The header holds `storm` (worst side, centre) and `survivors` (hand-picked bridges), both copied from `Tools/worldgen/decisions.ts`. `bridges[]` are the features.json bridges (`br-…`) plus unrecorded road/rail crossings of rivers and streams (`xb-…`), each with `deckH`, `hwAt`, `depthBelowMark`, `standing` and `reason`. `roadSegments[]` split every road at tile edges and junctions into pieces of at most 250 m, with `tile`, `inWood`, `band`, `blocked` and `cause`. `tiles[100]` (row-major, `j * 10 + i`) hold `craters`, `strikeZones`, `fires`, `gasHollows`, `animals`, `pocked`, `wrackDams`, `landslips`, `silt` and `fallenWoods`. For now nothing is damaged. `validateDistricts` returns a list of errors; the file has one array element per line.
+
 ## URL params
 
 Parsed by `src/urlParams.ts`:
