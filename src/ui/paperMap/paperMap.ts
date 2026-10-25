@@ -2,6 +2,8 @@
 // Local frame as in world/terrain.ts: x metres east, y metres north from the patch's SW corner.
 import { MAX_MAP_SCALE, MIN_MAP_SCALE, renderMap, toLocal, type MapView, type MarksLayer } from './renderMap';
 import type { MapData } from './mapData';
+import type { Marks } from './marks';
+import { createMarksTools } from './marksTools';
 
 export interface PaperMapOptions {
   /** Local metres at the centre of the screen when first opened. Defaults to the middle of the patch. */
@@ -9,6 +11,8 @@ export interface PaperMapOptions {
   /** Pixels per metre when first opened. Defaults to fitting the whole patch. */
   scale?: number;
   parent?: HTMLElement;
+  /** The player's pencil marks. With these, the map shows the tool palette. */
+  marks?: Marks;
   onChange?: (open: boolean) => void;
 }
 
@@ -37,6 +41,11 @@ export function createPaperMap(data: MapData, opts: PaperMapOptions = {}): Paper
   const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 
   const view = (): MapView => ({ width: canvas.width, height: canvas.height, cx, cy, scale, data, marks });
+
+  const tools = opts.marks
+    ? createMarksTools({ parent: root, canvas, marks: opts.marks, view, redraw: () => redraw() })
+    : undefined;
+  if (tools) marks = tools.layer;
 
   function redraw(): void {
     if (!visible) return;
@@ -70,15 +79,33 @@ export function createPaperMap(data: MapData, opts: PaperMapOptions = {}): Paper
   );
 
   let drag: { px: number; py: number } | undefined;
+  let penDown = false;
   canvas.addEventListener('mousedown', (ev) => {
+    if (ev.button === 0 && tools) {
+      const rect = canvas.getBoundingClientRect();
+      if (tools.pointerDown(ev.clientX - rect.left, ev.clientY - rect.top)) {
+        penDown = true;
+        return;
+      }
+    }
     drag = { px: ev.clientX, py: ev.clientY };
     canvas.style.cursor = 'grabbing';
   });
-  window.addEventListener('mouseup', () => {
+  window.addEventListener('mouseup', (ev) => {
+    if (penDown) {
+      const rect = canvas.getBoundingClientRect();
+      penDown = false;
+      tools?.pointerUp(ev.clientX - rect.left, ev.clientY - rect.top);
+    }
     drag = undefined;
     canvas.style.cursor = 'grab';
   });
   window.addEventListener('mousemove', (ev) => {
+    if (penDown) {
+      const rect = canvas.getBoundingClientRect();
+      tools?.pointerMove(ev.clientX - rect.left, ev.clientY - rect.top);
+      return;
+    }
     if (!drag) return;
     cx -= (ev.clientX - drag.px) / scale;
     cy += (ev.clientY - drag.py) / scale;
@@ -93,6 +120,7 @@ export function createPaperMap(data: MapData, opts: PaperMapOptions = {}): Paper
     },
     setVisible(v) {
       if (v === visible) return;
+      if (!v) tools?.cancel();
       visible = v;
       root.style.display = v ? 'block' : 'none';
       if (v) {
@@ -113,7 +141,7 @@ export function createPaperMap(data: MapData, opts: PaperMapOptions = {}): Paper
   };
 
   window.addEventListener('keydown', (ev) => {
-    if (ev.repeat) return;
+    if (ev.repeat || tools?.typing) return;
     if (ev.code === 'KeyM') self.toggle();
     else if (ev.code === 'Escape' && visible) self.setVisible(false);
   });

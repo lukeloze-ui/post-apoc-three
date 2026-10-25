@@ -28,6 +28,8 @@ import { buildRoadIndex } from './world/roadIndex';
 import { EYE_HEIGHT_M, HeadBob } from './render/headBob';
 import { createPaperMap } from './ui/paperMap/paperMap';
 import { prepareMapData } from './ui/paperMap/mapData';
+import { Marks } from './ui/paperMap/marks';
+import { SaveGame, parseClockSave, parsePlayerSave, registerCoreSections } from './save/save';
 
 declare global {
   interface Window {
@@ -45,7 +47,10 @@ async function main(): Promise<void> {
     fetchFeatures(),
   ]);
 
-  const clock = new GameClock(params.t);
+  // ?fresh=1 skips loading. The URL's position, facing and time win over the save.
+  const save = new SaveGame({ fresh: params.fresh });
+  const saved = parsePlayerSave(save.peek('player'));
+  const clock = new GameClock(params.t ?? parseClockSave(save.peek('clock')));
   const hud = createHud();
   const gs = createScene(document.body);
   const updateSky = (): void => {
@@ -57,7 +62,11 @@ async function main(): Promise<void> {
   const surface = createSurface(terrain);
 
   const start =
-    params.e !== undefined && params.n !== undefined ? osgbToLocal(params.e, params.n) : { x: START.x, y: START.y };
+    params.e !== undefined && params.n !== undefined
+      ? osgbToLocal(params.e, params.n)
+      : saved
+        ? { x: saved.x, y: saved.y }
+        : { x: START.x, y: START.y };
   const colorFn = createBandColorFn(terrain, flood);
   const chunks = new TerrainChunks(surface, { colorFn });
   chunks.buildAll(start.x, start.y);
@@ -71,7 +80,7 @@ async function main(): Promise<void> {
     linework.group,
     woodsAndBuildings.group,
   );
-  const look = new Look(gs.renderer.domElement, params.yaw ?? START.yaw, params.pitch ?? 0);
+  const look = new Look(gs.renderer.domElement, params.yaw ?? saved?.yaw ?? START.yaw, params.pitch ?? 0);
   const walkWorld = createWalkWorld({ surface, roads: buildRoadIndex(features.roads), lakes, gameDays: () => clock.gameDays });
   const player = createPlayer(start.x, start.y, look.yaw, walkWorld);
   const walkLog = new WalkLog();
@@ -104,11 +113,29 @@ async function main(): Promise<void> {
   // The paper map shows the world as it was: terrain and features only. While it is open the player
   // cannot walk and the clock is paused. It opens centred on the patch, never on the player.
   const explicitView = params.e !== undefined && params.n !== undefined;
+  const marks = new Marks();
   const paperMap = createPaperMap(prepareMapData(terrain, features), {
+    marks,
     centre: explicitView ? start : undefined,
     scale: explicitView ? 0.25 : undefined,
   });
   if (params.view === 'map') paperMap.setVisible(true);
+
+  // The dev fly camera does not move the player, so it keeps its own hands off the saved position.
+  if (!fly) {
+    registerCoreSections(save, {
+      player,
+      clock,
+      pack: player.party.pack,
+      overridden: { player: explicitView || params.yaw !== undefined, clock: params.t !== undefined },
+    });
+  }
+  save.registerSection('marks', () => marks.serialize(), (d) => marks.load(d));
+  marks.subscribe(() => save.markDirty());
+  if (!fly) {
+    save.start();
+    window.addEventListener('pagehide', () => save.save());
+  }
 
   const stats = params.stats
     ? createStatsReadout(() => ({
