@@ -3,7 +3,7 @@
 import { Band, type BandCode } from './flood';
 import { heightAt, type Bytes, type Terrain } from './terrain';
 
-/** Draining runs to the end of day 5; game days count from 0 at d1-00:00, so day 5 ends at gameDay 5. */
+/** Draining runs to the end of day 5; game days count from 0 at d0-00:00 (GameClock.gameDays), so day 5 ends at gameDay 5. */
 export const DRAIN_END_DAY = 5;
 /** Trapped salt lakes fall this far per game day once draining is over, metres. */
 export const FALL_RATE_M_PER_DAY = 0.03;
@@ -74,7 +74,7 @@ export async function fetchLakes(
   return parseLakes(meta, ids, terrain);
 }
 
-/** Surface level of a lake on gameDay (days since d1-00:00), metres. Fresh lakes never fall; salt lakes stop at their floor. */
+/** Surface level of a lake on gameDay (days since d0-00:00), metres. Fresh lakes never fall; salt lakes stop at their floor. */
 export function lakeLevelAt(lake: Lake, gameDay: number): number {
   if (!lake.salt) return lake.spill;
   const fallen = Math.max(0, gameDay - DRAIN_END_DAY) * FALL_RATE_M_PER_DAY;

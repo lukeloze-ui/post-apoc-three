@@ -9,7 +9,8 @@ import { buildLakeWater } from './render/lakeWater';
 import { Linework } from './render/linework';
 import { WoodsAndBuildings } from './render/woodsAndBuildings';
 import { fetchFeatures } from './world/features';
-import { currentGameDay } from './sim/clock';
+import { GameClock, TIME_SCALE } from './sim/time';
+import { sunPosition } from './sim/sun';
 import { fetchTerrain, START } from './world/terrain';
 import { createSurface, surfaceHeight } from './world/surface';
 import { fetchFlood } from './world/flood';
@@ -17,6 +18,7 @@ import { fetchLakes } from './world/lakes';
 import { createOverheadView } from './ui/debug/overheadView';
 import { osgbToLocal } from './world/geo';
 import { createStatsReadout } from './ui/debug/stats';
+import { clockLabel, createHud } from './ui/hud';
 
 declare global {
   interface Window {
@@ -36,7 +38,15 @@ async function main(): Promise<void> {
     fetchFeatures(),
   ]);
 
+  const clock = new GameClock(params.t);
+  const hud = createHud();
   const gs = createScene(document.body);
+  const updateSky = (): void => {
+    const sun = sunPosition(clock.utcMs);
+    gs.setSun(sun.altitude, sun.azimuth);
+    hud.update(clockLabel(clock.day, clock.hh, clock.mm));
+  };
+  updateSky();
   const surface = createSurface(terrain);
 
   const start =
@@ -50,7 +60,7 @@ async function main(): Promise<void> {
   gs.scene.add(
     chunks.group,
     buildTerrainApron(surface, colorFn),
-    buildLakeWater(lakes, currentGameDay()),
+    buildLakeWater(lakes, clock.gameDays),
     linework.group,
     woodsAndBuildings.group,
   );
@@ -62,7 +72,7 @@ async function main(): Promise<void> {
   // Dev tool: only in dev builds or with ?view=debug.
   const debugView =
     import.meta.env.DEV || params.view === 'debug'
-      ? createOverheadView({ terrain, flood, lakes, gameDay: currentGameDay() }, () => ({
+      ? createOverheadView({ terrain, flood, lakes, gameDay: clock.gameDays }, () => ({
           x: gs.camera.position.x,
           y: -gs.camera.position.z,
           yaw: look.yaw,
@@ -85,10 +95,12 @@ async function main(): Promise<void> {
       }))
     : null;
 
-  window.__game = { params, terrain, surface, chunks, linework, woodsAndBuildings, look, ...gs };
+  window.__game = { params, clock, terrain, surface, chunks, linework, woodsAndBuildings, look, ...gs };
 
   gs.run(
     (dt) => {
+      clock.advance(dt * TIME_SCALE);
+      updateSky();
       fly?.update(gs.camera, dt);
       look.apply(gs.camera);
       chunks.update(gs.camera.position.x, -gs.camera.position.z);
