@@ -1,6 +1,6 @@
 // The map's tool palette and pointer handling: pencil, note, cross-out, eraser, plus a hand for panning and undo.
 // DOM only; the marks themselves live in marks.ts and are drawn by drawMarks.ts.
-import { NOTE_FONT, createMarksLayer, type LegLabel } from './drawMarks';
+import { NOTE_FONT, createMarksLayer, type LegLabel, type LegReal } from './drawMarks';
 import type { Mark, Marks, Pt } from './marks';
 import { toLocal, type MapView, type MarksLayer } from './renderMap';
 
@@ -46,6 +46,8 @@ export interface MarksToolsOptions {
   redraw(): void;
   /** Text beside each leg; called on every draw. */
   legLabel?: LegLabel;
+  /** Real walked time beside the plan, per leg id; called on every draw. */
+  legReal?: LegReal;
 }
 
 interface NoteBox {
@@ -71,7 +73,7 @@ export function createMarksTools(o: MarksToolsOptions): MarksTools {
     }
     return undefined;
   };
-  const layer = createMarksLayer(marks, preview, o.legLabel);
+  const layer = createMarksLayer(marks, preview, o.legLabel, o.legReal);
 
   // ---- palette ----
   const bar = document.createElement('div');

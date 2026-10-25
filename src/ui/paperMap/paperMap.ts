@@ -3,7 +3,7 @@
 import { MAX_MAP_SCALE, MIN_MAP_SCALE, renderMap, toLocal, type MapView, type MarksLayer } from './renderMap';
 import type { MapData } from './mapData';
 import type { Marks } from './marks';
-import type { LegLabel } from './drawMarks';
+import type { LegLabel, LegReal } from './drawMarks';
 import { createMarksTools } from './marksTools';
 
 export interface PaperMapOptions {
@@ -16,6 +16,8 @@ export interface PaperMapOptions {
   marks?: Marks;
   /** Text beside each planned leg (distance, climb, plan time); called on every draw. */
   legLabel?: LegLabel;
+  /** Real walked time ("1:31") for a leg id, shown after the plan; called on every draw. */
+  legReal?: LegReal;
   onChange?: (open: boolean) => void;
 }
 
@@ -46,7 +48,7 @@ export function createPaperMap(data: MapData, opts: PaperMapOptions = {}): Paper
   const view = (): MapView => ({ width: canvas.width, height: canvas.height, cx, cy, scale, data, marks });
 
   const tools = opts.marks
-    ? createMarksTools({ parent: root, canvas, marks: opts.marks, legLabel: opts.legLabel, view, redraw: () => redraw() })
+    ? createMarksTools({ parent: root, canvas, marks: opts.marks, legLabel: opts.legLabel, legReal: opts.legReal, view, redraw: () => redraw() })
     : undefined;
   if (tools) marks = tools.layer;
 

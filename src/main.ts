@@ -11,7 +11,8 @@ import { WoodsAndBuildings } from './render/woodsAndBuildings';
 import { fetchFeatures } from './world/features';
 import { GameClock, TIME_SCALE } from './sim/time';
 import { sunPosition } from './sim/sun';
-import { legLabel } from './sim/naismith';
+import { formatHours, legLabel } from './sim/naismith';
+import { LegTracker } from './sim/legTracker';
 import { fetchTerrain, heightAt, START } from './world/terrain';
 import { createSurface } from './world/surface';
 import { fetchFlood } from './world/flood';
@@ -29,7 +30,7 @@ import { buildRoadIndex } from './world/roadIndex';
 import { EYE_HEIGHT_M, HeadBob } from './render/headBob';
 import { createPaperMap } from './ui/paperMap/paperMap';
 import { prepareMapData } from './ui/paperMap/mapData';
-import { Marks } from './ui/paperMap/marks';
+import { Marks, type Leg } from './ui/paperMap/marks';
 import { SaveGame, parseClockSave, parsePlayerSave, registerCoreSections } from './save/save';
 
 declare global {
@@ -115,9 +116,14 @@ async function main(): Promise<void> {
   // cannot walk and the clock is paused. It opens centred on the patch, never on the player.
   const explicitView = params.e !== undefined && params.n !== undefined;
   const marks = new Marks();
+  const legTracker = new LegTracker();
   const paperMap = createPaperMap(prepareMapData(terrain, features), {
     marks,
     legLabel: (pts) => legLabel(pts, (x, y) => heightAt(terrain, x, y), player.party),
+    legReal: (id) => {
+      const min = legTracker.realMinutes(id);
+      return min === undefined ? undefined : formatHours(min / 60);
+    },
     centre: explicitView ? start : undefined,
     scale: explicitView ? 0.25 : undefined,
   });
@@ -134,6 +140,8 @@ async function main(): Promise<void> {
   }
   save.registerSection('marks', () => marks.serialize(), (d) => marks.load(d));
   marks.subscribe(() => save.markDirty());
+  save.registerSection('legTimes', () => legTracker.serialize(), (d) => legTracker.load(d));
+  legTracker.subscribe(() => save.markDirty());
   if (!fly) {
     save.start();
     window.addEventListener('pagehide', () => save.save());
@@ -162,7 +170,12 @@ async function main(): Promise<void> {
         // Modelled speed times TIME_SCALE on screen; the clock advances at the same scale, so game time per metre matches.
         player.yaw = look.yaw;
         clock.advance(player.step(dt * TIME_SCALE, keys.read(), walkWorld));
-        walkLog.record(clock.minutes, player.x, player.y);
+        if (walkLog.record(clock.minutes, player.x, player.y)) {
+          legTracker.update(
+            walkLog.entries,
+            marks.all.filter((m): m is Leg => m.kind === 'leg'),
+          );
+        }
         gs.camera.position.set(player.x, player.z + EYE_HEIGHT_M + bob.update(dt, player.movedMs), -player.y);
         playerHud?.update(player);
       }

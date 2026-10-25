@@ -8,6 +8,11 @@ const WOBBLE_PX = 0.7;
 const LABEL_FONT = '13px "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
 /** Text beside a leg, computed on every draw so it follows the pack. */
 export type LegLabel = (pts: readonly Pt[]) => string;
+/** The real walked time for a leg ("1:31"), if it has been walked; drawn after the plan in a different pencil. */
+export type LegReal = (legId: number) => string | undefined;
+/** Coloured pencil for the real time, in italics, so it reads apart from the plan. */
+const REAL_PENCIL = '#8a3b2e';
+const REAL_FONT = 'italic 600 13px "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
 export const NOTE_FONT = '15px "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive';
 
 /** Deterministic value in -1..1. */
@@ -64,7 +69,7 @@ function pencilLine(ctx: CanvasRenderingContext2D, view: MapView, id: number, pt
 const TICK_M = 250;
 const TICK_MIN_PX = 8;
 
-function drawLeg(ctx: CanvasRenderingContext2D, view: MapView, m: Mark & { kind: 'leg' }, label?: string): void {
+function drawLeg(ctx: CanvasRenderingContext2D, view: MapView, m: Mark & { kind: 'leg' }, label?: string, real?: string): void {
   const pts = m.pts;
   if (pts.length >= 2) pencilLine(ctx, view, m.id, pts, 2.2);
   ctx.strokeStyle = PENCIL;
@@ -128,14 +133,20 @@ function drawLeg(ctx: CanvasRenderingContext2D, view: MapView, m: Mark & { kind:
     ctx.fillStyle = PENCIL;
     ctx.globalAlpha = 0.9;
     ctx.fillText(label, c.px + 10, c.py - 8);
+    if (real) {
+      const w = ctx.measureText(label).width;
+      ctx.font = REAL_FONT;
+      ctx.fillStyle = REAL_PENCIL;
+      ctx.fillText(` / real ${real}`, c.px + 10 + w, c.py - 8);
+    }
     ctx.globalAlpha = 1;
   }
 }
 
-function drawMark(ctx: CanvasRenderingContext2D, view: MapView, m: Mark, legLabel?: LegLabel): void {
+function drawMark(ctx: CanvasRenderingContext2D, view: MapView, m: Mark, legLabel?: LegLabel, legReal?: LegReal): void {
   switch (m.kind) {
     case 'leg':
-      drawLeg(ctx, view, m, legLabel?.(m.pts));
+      drawLeg(ctx, view, m, legLabel?.(m.pts), legReal?.(m.id));
       break;
     case 'stroke':
       pencilLine(ctx, view, m.id, m.pts, 2.2);
@@ -181,9 +192,9 @@ function drawMark(ctx: CanvasRenderingContext2D, view: MapView, m: Mark, legLabe
 }
 
 /** The marks layer for `renderMap`: over the map, under the scale bar and names. `preview` is drawn last (the stroke in progress). */
-export function createMarksLayer(marks: Marks, preview?: () => Mark | undefined, legLabel?: LegLabel): MarksLayer {
+export function createMarksLayer(marks: Marks, preview?: () => Mark | undefined, legLabel?: LegLabel, legReal?: LegReal): MarksLayer {
   return (ctx, view) => {
-    for (const m of marks.all) drawMark(ctx, view, m, legLabel);
+    for (const m of marks.all) drawMark(ctx, view, m, legLabel, legReal);
     const p = preview?.();
     if (p) drawMark(ctx, view, p);
   };
